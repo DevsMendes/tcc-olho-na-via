@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Buraco Alerta",
+    "slug": "buraco-alerta",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "O Buraco Alerta usa a camera para fotografar buracos nas vias.",
+        "NSLocationWhenInUseUsageDescription": "O Buraco Alerta usa sua localizacao em tempo real para marcar o buraco no mapa.",
+        "NSPhotoLibraryUsageDescription": "O Buraco Alerta permite anexar fotos da galeria ao registro."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O Buraco Alerta permite anexar fotos da galeria ao registro.",
+          "cameraPermission": "O Buraco Alerta usa a camera para fotografar buracos nas vias."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "O Buraco Alerta usa sua localizacao em tempo real para marcar o buraco no mapa."
+        }
+      ]
+    ]
+  }
+}
