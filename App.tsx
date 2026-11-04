@@ -3,6 +3,7 @@ import * as Location from 'expo-location';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Easing,
@@ -49,6 +50,13 @@ type ThemeMode = 'light' | 'dark';
 type Coordinate = {
   latitude: number;
   longitude: number;
+};
+
+type MapCluster = {
+  id: string;
+  latitude: number;
+  longitude: number;
+  reports: Report[];
 };
 
 type ReportHistory = {
@@ -164,6 +172,21 @@ const initialRegion: Region = {
   latitudeDelta: 0.035,
   longitudeDelta: 0.028,
 };
+
+const darkMapStyle = [
+  { elementType: 'geometry', stylers: [{ color: '#202733' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#B9C2D0' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#202733' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#384353' }] },
+  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#1A202A' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#252E3B' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#17352D' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#313C4B' }] },
+  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#3A4657' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#47566B' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#283240' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#122B43' }] },
+];
 
 const initialReports: Report[] = [
   {
@@ -465,6 +488,40 @@ function buildLocalAdminMetrics(reports: Report[]): Open311AdminMetrics {
   };
 }
 
+function buildMapClusters(reports: Report[]) {
+  const clusters: MapCluster[] = [];
+  const clusterDistance = 0.0018;
+
+  reports.forEach((report) => {
+    const latitude = Number(report.latitude);
+    const longitude = Number(report.longitude);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return;
+    }
+
+    const cluster = clusters.find(
+      (item) => Math.abs(item.latitude - latitude) < clusterDistance && Math.abs(item.longitude - longitude) < clusterDistance,
+    );
+
+    if (cluster) {
+      cluster.reports.push(report);
+      cluster.latitude = cluster.reports.reduce((sum, item) => sum + Number(item.latitude), 0) / cluster.reports.length;
+      cluster.longitude = cluster.reports.reduce((sum, item) => sum + Number(item.longitude), 0) / cluster.reports.length;
+      return;
+    }
+
+    clusters.push({
+      id: String(report.id),
+      latitude,
+      longitude,
+      reports: [report],
+    });
+  });
+
+  return clusters;
+}
+
 function mapOpen311RecordToReport(record: Open311StoredRequest, index: number): Report {
   const address = splitAddress(record.address || '');
   const status = fromOpen311Status(record.status);
@@ -586,6 +643,7 @@ export default function App() {
 
   const panelMetrics = useMemo(() => adminMetrics ?? buildLocalAdminMetrics(reports), [adminMetrics, reports]);
   const hotspotRegions = useMemo(() => buildLocalAdminMetrics(filteredReports).concentration_regions, [filteredReports]);
+  const mapClusters = useMemo(() => buildMapClusters(filteredReports), [filteredReports]);
   const formSeverity = toCriterionScore(form.severity);
   const formRisk = toCriterionScore(form.risk);
   const formImpact = toCriterionScore(form.impact);
@@ -1284,25 +1342,47 @@ export default function App() {
                 <MapView
                   ref={mapRef}
                   initialRegion={initialRegion}
+                  customMapStyle={theme === 'dark' ? darkMapStyle : undefined}
                   onPress={handleMapPress}
                   showsUserLocation={locationStatus === 'granted'}
                   style={styles.map}
                 >
-                  {filteredReports.map((report) => (
-                    <Marker
-                      key={report.id}
-                      coordinate={{
-                        latitude: Number(report.latitude),
-                        longitude: Number(report.longitude),
-                      }}
-                      title={report.street}
-                      description={report.status}
-                    >
-                      <View style={styles.markerShadow}>
-                        <View style={[styles.marker, { backgroundColor: getStatusMeta(report.status).color }]} />
-                      </View>
-                    </Marker>
-                  ))}
+                  {mapClusters.map((cluster) => {
+                    const [leadReport] = cluster.reports;
+                    const isGroup = cluster.reports.length > 1;
+                    const color = getPriorityMeta(leadReport.priority).color;
+
+                    return (
+                      <Marker
+                        key={cluster.id}
+                        coordinate={{ latitude: cluster.latitude, longitude: cluster.longitude }}
+                        description={
+                          isGroup
+                            ? `${cluster.reports.length} ocorrências próximas`
+                            : leadReport.status
+                        }
+                        onPress={() => {
+                          if (isGroup) {
+                            focusMapOn({ latitude: cluster.latitude, longitude: cluster.longitude });
+                            return;
+                          }
+
+                          setSelectedReportId(leadReport.id);
+                        }}
+                        title={isGroup ? `${cluster.reports.length} ocorrências` : leadReport.street}
+                      >
+                        {isGroup ? (
+                          <View style={[styles.clusterMarker, { backgroundColor: color }]}>
+                            <Text style={styles.clusterMarkerText}>{cluster.reports.length}</Text>
+                          </View>
+                        ) : (
+                          <View style={styles.markerShadow}>
+                            <View style={[styles.marker, { backgroundColor: getStatusMeta(leadReport.status).color }]} />
+                          </View>
+                        )}
+                      </Marker>
+                    );
+                  })}
 
                   {currentCoordinate && (
                     <Marker
@@ -1377,9 +1457,12 @@ export default function App() {
                 </View>
 
                 {isLoadingReports ? (
-                  <View style={styles.apiStatusCard}>
-                    <View style={styles.apiStatusDot} />
-                    <Text style={styles.apiStatusText}>Carregando ocorrências salvas no banco...</Text>
+                  <View style={styles.loadingCard}>
+                    <ActivityIndicator color={palette.blue} size="small" />
+                    <View style={styles.loadingTextBlock}>
+                      <Text style={styles.loadingTitle}>Atualizando ocorrências</Text>
+                      <Text style={styles.loadingText}>Consultando os dados salvos na API 311.</Text>
+                    </View>
                   </View>
                 ) : null}
 
@@ -1568,12 +1651,20 @@ export default function App() {
                     style={({ pressed }) => [styles.reportCard, pressed && styles.cardPressed]}
                     onPress={() => setSelectedReportId(report.id)}
                   >
+                    <View style={[styles.reportAccent, { backgroundColor: getPriorityMeta(report.priority).color }]} />
                     <View style={styles.reportHeader}>
                       <View style={styles.reportHeaderText}>
                         <Text style={styles.protocol}>#{report.id}</Text>
                         <Text style={styles.reportTitle}>{report.street}</Text>
                       </View>
-                      <StatusPill status={report.status} />
+                      <View style={styles.reportHeaderBadges}>
+                        <View style={[styles.priorityPill, { backgroundColor: getPriorityMeta(report.priority).background }]}>
+                          <Text style={[styles.priorityPillText, { color: getPriorityMeta(report.priority).color }]}>
+                            {report.priority}
+                          </Text>
+                        </View>
+                        <StatusPill status={report.status} />
+                      </View>
                     </View>
 
                     {report.photoUri ? (
@@ -1590,11 +1681,9 @@ export default function App() {
                     <Text style={styles.reportDescription}>{report.description}</Text>
 
                     <View style={styles.reportFooter}>
-                      <Text style={styles.footerText}>Prioridade {report.priority}</Text>
                       <Text style={styles.footerText}>Score {report.priorityScore}</Text>
                       <Text style={styles.footerText}>{report.confirmations} confirmações</Text>
                       <Text style={styles.footerText}>{report.createdAt}</Text>
-                      {report.citizenName ? <Text style={styles.footerText}>{report.citizenName}</Text> : null}
                     </View>
                     <Text style={styles.coordinates}>
                       {report.latitude}, {report.longitude}
@@ -1642,11 +1731,17 @@ export default function App() {
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.section}>
-                <View>
+                <View style={styles.dashboardIntro}>
+                  <View>
                   <Text style={[styles.title, isCompact && styles.titleCompact]}>Painel administrativo</Text>
                   <Text style={[styles.paragraph, isCompact && styles.paragraphCompact]}>
                     Indicadores operacionais para triagem, acompanhamento e interoperabilidade Open311.
                   </Text>
+                  </View>
+                  <View style={styles.dashboardLiveBadge}>
+                    <View style={styles.dashboardLiveDot} />
+                    <Text style={styles.dashboardLiveText}>Ao vivo</Text>
+                  </View>
                 </View>
 
                 <View style={[styles.statsGrid, isCompact && styles.statsGridCompact]}>
@@ -2580,6 +2675,22 @@ function createStyles() {
     height: 14,
     width: 14,
   },
+  clusterMarker: {
+    alignItems: 'center',
+    borderColor: palette.outline,
+    borderRadius: 18,
+    borderWidth: 3,
+    height: 36,
+    justifyContent: 'center',
+    minWidth: 36,
+    paddingHorizontal: 8,
+    ...cardShadow,
+  },
+  clusterMarkerText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+  },
   userMarkerOuter: {
     alignItems: 'center',
     backgroundColor: 'rgba(37, 99, 235, 0.16)',
@@ -2699,6 +2810,30 @@ function createStyles() {
     fontSize: 13,
     fontWeight: '700',
     lineHeight: 18,
+  },
+  loadingCard: {
+    alignItems: 'center',
+    backgroundColor: palette.field,
+    borderColor: palette.line,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    padding: 14,
+  },
+  loadingTextBlock: {
+    flex: 1,
+  },
+  loadingTitle: {
+    color: palette.text,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  loadingText: {
+    color: palette.secondary,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
   },
   filterPanel: {
     backgroundColor: palette.field,
@@ -3048,6 +3183,34 @@ function createStyles() {
   statsGridCompact: {
     gap: 8,
   },
+  dashboardIntro: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+  },
+  dashboardLiveBadge: {
+    alignItems: 'center',
+    backgroundColor: palette.softGreen,
+    borderColor: palette.greenLine,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+  },
+  dashboardLiveDot: {
+    backgroundColor: palette.green,
+    borderRadius: 4,
+    height: 7,
+    width: 7,
+  },
+  dashboardLiveText: {
+    color: palette.green,
+    fontSize: 11,
+    fontWeight: '900',
+  },
   statCard: {
     borderColor: palette.line,
     borderWidth: 1,
@@ -3083,8 +3246,17 @@ function createStyles() {
     borderWidth: 1,
     borderRadius: 8,
     gap: 12,
+    overflow: 'hidden',
     padding: 16,
+    paddingLeft: 20,
     ...cardShadow,
+  },
+  reportAccent: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    top: 0,
+    width: 4,
   },
   reportHeader: {
     alignItems: 'flex-start',
@@ -3094,6 +3266,19 @@ function createStyles() {
   },
   reportHeaderText: {
     flex: 1,
+  },
+  reportHeaderBadges: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  priorityPill: {
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  priorityPillText: {
+    fontSize: 11,
+    fontWeight: '900',
   },
   protocol: {
     color: palette.secondary,
@@ -3141,13 +3326,9 @@ function createStyles() {
     gap: 8,
   },
   footerText: {
-    backgroundColor: palette.field,
-    borderRadius: 8,
     color: palette.secondary,
     fontSize: 12,
-    fontWeight: '800',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    fontWeight: '700',
   },
   coordinates: {
     color: palette.secondary,
