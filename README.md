@@ -5,6 +5,7 @@ Aplicativo mobile em React Native + Expo para registro colaborativo de buracos e
 ## O que existe no projeto
 
 - App mobile em React Native + Expo.
+- Site de apresentacao responsivo em `site/index.html`.
 - Mapa na primeira tela para selecionar o local do buraco.
 - Uso da localizacao atual do celular.
 - Registro de ocorrencia com descricao, endereco, bairro, referencia, prioridade e coordenadas.
@@ -27,6 +28,16 @@ Antes de baixar o projeto, instale:
 - Expo Go no celular:
   - iPhone: App Store
   - Android: Google Play
+
+## Site de apresentacao
+
+O site institucional do projeto pode ser aberto diretamente no navegador:
+
+```bash
+open site/index.html
+```
+
+No Windows, abra o arquivo `site/index.html` com dois cliques. Ele tambem pode ser publicado em hospedagens estaticas, como GitHub Pages.
 
 Depois de instalar o Node.js, feche e abra o Terminal novamente e teste:
 
