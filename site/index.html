@@ -34,6 +34,7 @@
       <section class="hero" id="inicio">
         <img class="hero-image" src="assets/olho-na-via-hero.png" alt="Pessoa usando um mapa para registrar um problema em uma avenida de Belo Horizonte" />
         <div class="hero-shade"></div>
+        <canvas class="hero-three" id="hero-three" aria-label="Marcador de localização tridimensional em movimento"></canvas>
         <div class="hero-content">
           <p class="eyebrow">CIDADANIA EM MOVIMENTO</p>
           <h1>Viu um buraco?<br />A cidade ganha um <span>novo olhar.</span></h1>
@@ -125,6 +126,25 @@
       <p>Mais atenção nas ruas. Mais gente cuidando da cidade.</p>
       <span>2026</span>
     </footer>
-    <script src="script.js"></script>
+    <aside class="via-help" aria-label="Assistente do Olho na Via">
+      <section class="via-panel" id="via-panel" hidden aria-live="polite">
+        <div class="via-panel-heading">
+          <div><p>ASSISTENTE VIA</p><h2>Posso ajudar?</h2></div>
+          <button class="via-close" type="button" aria-label="Fechar assistente" data-via-close>×</button>
+        </div>
+        <p class="via-answer" id="via-answer">Escolha uma pergunta rápida para entender o projeto.</p>
+        <div class="via-questions">
+          <button type="button" data-answer="No aplicativo, toque no mapa ou use sua localização atual. Depois, adicione uma foto, uma descrição e envie o registro.">Como registro uma ocorrência?</button>
+          <button type="button" data-answer="Sim. A internet é necessária para enviar a ocorrência, salvar a foto e consultar os protocolos registrados.">Preciso estar conectado?</button>
+          <button type="button" data-answer="A API recebe os dados do app, armazena os protocolos no banco SQLite e devolve as informações para consulta e atualização de status.">Como funciona a API?</button>
+          <button type="button" data-answer="Sim. Cada registro possui um protocolo, status e histórico. Assim, é possível acompanhar a evolução da solicitação.">Posso acompanhar o status?</button>
+        </div>
+      </section>
+      <button class="via-launcher" type="button" aria-expanded="false" aria-controls="via-panel">
+        <span class="via-message">Dúvidas?</span>
+        <img src="assets/via-assistente.png" alt="Via, assistente do Olho na Via" />
+      </button>
+    </aside>
+    <script type="module" src="script.js"></script>
   </body>
 </html>
