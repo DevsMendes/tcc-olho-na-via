@@ -1229,15 +1229,16 @@ export default function App() {
         <View style={[styles.header, isCompact && styles.headerCompact]}>
           <AppLogo compact={isCompact} header />
           <View style={[styles.headerRight, isCompact && styles.headerRightCompact]}>
-            <ThemeSelector theme={theme} onChangeTheme={setTheme} />
+            <ThemeSelector compact theme={theme} onChangeTheme={setTheme} />
             <View style={styles.headerMetric}>
+              <View style={styles.headerMetricDot} />
               <Text style={styles.headerMetricValue}>{stats.openReports}</Text>
               <Text style={styles.headerMetricLabel}>ativas</Text>
             </View>
             <Pressable style={({ pressed }) => [styles.userChip, pressed && styles.buttonPressed]} onPress={logout}>
-              <Text style={styles.userChipName} numberOfLines={1}>
-                {currentUser.name}
-              </Text>
+              <View style={styles.userAvatar}>
+                <Text style={styles.userAvatarText}>{currentUser.name.trim().charAt(0).toUpperCase()}</Text>
+              </View>
               <Text style={styles.userChipAction}>Sair</Text>
             </Pressable>
           </View>
@@ -1844,14 +1845,16 @@ function AuthScreen({
 }
 
 function ThemeSelector({
+  compact = false,
   theme,
   onChangeTheme,
 }: {
+  compact?: boolean;
   theme: ThemeMode;
   onChangeTheme: (theme: ThemeMode) => void;
 }) {
   return (
-    <View accessibilityRole="radiogroup" style={styles.themeSelector}>
+    <View accessibilityRole="radiogroup" style={[styles.themeSelector, compact && styles.themeSelectorCompact]}>
       <Pressable
         accessibilityLabel="Usar tema claro"
         accessibilityRole="radio"
@@ -1859,6 +1862,7 @@ function ThemeSelector({
         onPress={() => onChangeTheme('light')}
         style={({ pressed }) => [
           styles.themeChoice,
+          compact && styles.themeChoiceCompact,
           theme === 'light' && styles.themeChoiceActive,
           pressed && styles.buttonPressed,
         ]}
@@ -1872,6 +1876,7 @@ function ThemeSelector({
         onPress={() => onChangeTheme('dark')}
         style={({ pressed }) => [
           styles.themeChoice,
+          compact && styles.themeChoiceCompact,
           theme === 'dark' && styles.themeChoiceActive,
           pressed && styles.buttonPressed,
         ]}
@@ -2396,62 +2401,61 @@ function createStyles() {
     marginBottom: 18,
   },
   headerCompact: {
-    alignItems: 'flex-start',
-    gap: 10,
+    alignItems: 'center',
     marginBottom: 12,
   },
   headerRight: {
-    alignItems: 'flex-end',
-    gap: 8,
-  },
-  headerRightCompact: {
     alignItems: 'center',
     flexDirection: 'row',
+    flexShrink: 1,
+    gap: 10,
+  },
+  headerRightCompact: {
+    gap: 6,
   },
   headerMetric: {
     alignItems: 'center',
-    backgroundColor: palette.card,
-    borderColor: palette.line,
-    borderWidth: 1,
-    borderRadius: 8,
-    minWidth: 74,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    ...cardShadow,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  headerMetricDot: {
+    backgroundColor: palette.green,
+    borderRadius: 4,
+    height: 7,
+    width: 7,
   },
   headerMetricValue: {
     color: palette.text,
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '800',
   },
   headerMetricLabel: {
     color: palette.secondary,
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 1,
+    fontSize: 11,
+    fontWeight: '600',
   },
   userChip: {
     alignItems: 'center',
-    backgroundColor: palette.selected,
-    borderColor: palette.selectedLine,
-    borderWidth: 1,
-    borderRadius: 8,
     flexDirection: 'row',
-    gap: 8,
-    maxWidth: 150,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    gap: 5,
   },
-  userChipName: {
-    color: palette.text,
-    flexShrink: 1,
+  userAvatar: {
+    alignItems: 'center',
+    backgroundColor: palette.selected,
+    borderRadius: 14,
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
+  userAvatarText: {
+    color: palette.blue,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '900',
   },
   userChipAction: {
-    color: palette.secondary,
-    fontSize: 11,
-    fontWeight: '800',
+    color: palette.blue,
+    fontSize: 10,
+    fontWeight: '700',
   },
   tabBar: {
     backgroundColor: palette.strongMuted,
@@ -2977,12 +2981,24 @@ function createStyles() {
     gap: 3,
     padding: 3,
   },
+  themeSelectorCompact: {
+    alignSelf: 'auto',
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    gap: 2,
+    padding: 0,
+  },
   themeChoice: {
     alignItems: 'center',
     borderRadius: 6,
     justifyContent: 'center',
-    height: 34,
-    width: 34,
+    height: 32,
+    width: 32,
+  },
+  themeChoiceCompact: {
+    borderRadius: 14,
+    height: 28,
+    width: 28,
   },
   themeChoiceActive: {
     backgroundColor: palette.card,
@@ -2991,8 +3007,8 @@ function createStyles() {
   },
   themeChoiceIcon: {
     color: palette.secondary,
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '400',
   },
   segment: {
     alignItems: 'center',
