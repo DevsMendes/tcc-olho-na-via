@@ -52,6 +52,16 @@ db.exec(`
     created_at TEXT NOT NULL,
     FOREIGN KEY (service_request_id) REFERENCES requests(service_request_id)
   );
+
+  CREATE TABLE IF NOT EXISTS request_confirmations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    service_request_id TEXT NOT NULL,
+    user_id INTEGER,
+    created_at TEXT NOT NULL,
+    UNIQUE(service_request_id, user_id),
+    FOREIGN KEY (service_request_id) REFERENCES requests(service_request_id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
 `);
 
 function sendJson(response, statusCode, data) {
@@ -188,7 +198,59 @@ function parseAttributes(attributesJson) {
   }
 }
 
+function clampScore(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return 1;
+  }
+
+  return Math.min(Math.max(Math.round(number), 1), 3);
+}
+
+function calculatePriority(attributes, confirmations = 0) {
+  const severity = clampScore(attributes.severity || attributes.gravidade || 2);
+  const risk = clampScore(attributes.risk || attributes.risco || 2);
+  const impact = clampScore(attributes.impact || attributes.impacto || 2);
+  const confirmationScore = Math.min(Number(confirmations) || 0, 10);
+  const score = severity * 3 + risk * 3 + impact * 2 + confirmationScore;
+
+  if (score >= 20) {
+    return { label: 'Alta', score, severity, risk, impact };
+  }
+
+  if (score >= 13) {
+    return { label: 'Media', score, severity, risk, impact };
+  }
+
+  return { label: 'Baixa', score, severity, risk, impact };
+}
+
+function enrichAttributes(attributes, confirmations = 0) {
+  const priority = calculatePriority(attributes, confirmations);
+
+  return {
+    ...attributes,
+    priority: priority.label,
+    priority_score: priority.score,
+    severity: priority.severity,
+    risk: priority.risk,
+    impact: priority.impact,
+    confirmations,
+  };
+}
+
+function getConfirmationCount(serviceRequestId) {
+  const row = db
+    .prepare('SELECT COUNT(*) AS total FROM request_confirmations WHERE service_request_id = ?')
+    .get(serviceRequestId);
+
+  return Number(row?.total || 0);
+}
+
 function serializeRequest(row) {
+  const confirmationCount = getConfirmationCount(row.service_request_id);
+
   return {
     service_request_id: row.service_request_id,
     service_code: row.service_code,
@@ -202,7 +264,8 @@ function serializeRequest(row) {
     lat: row.lat,
     long: row.long,
     media_url: row.media_url || '',
-    attributes: parseAttributes(row.attributes_json),
+    attributes: enrichAttributes(parseAttributes(row.attributes_json), confirmationCount),
+    confirmation_count: confirmationCount,
     user_id: row.user_id,
     user: row.user_id
       ? {
@@ -241,6 +304,39 @@ function getHistory(serviceRequestId) {
       'SELECT status, status_notes, created_at FROM request_history WHERE service_request_id = ? ORDER BY id ASC',
     )
     .all(serviceRequestId);
+}
+
+function refreshPriorityAttributes(serviceRequestId) {
+  const record = db.prepare('SELECT attributes_json FROM requests WHERE service_request_id = ?').get(serviceRequestId);
+
+  if (!record) {
+    return;
+  }
+
+  const attributes = parseAttributes(record.attributes_json);
+  const enriched = enrichAttributes(attributes, getConfirmationCount(serviceRequestId));
+
+  db.prepare('UPDATE requests SET attributes_json = ?, updated_datetime = ? WHERE service_request_id = ?').run(
+    JSON.stringify(enriched),
+    nowIso(),
+    serviceRequestId,
+  );
+}
+
+function parseDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function differenceInHours(start, end) {
+  const startDate = parseDate(start);
+  const endDate = parseDate(end);
+
+  if (!startDate || !endDate) {
+    return null;
+  }
+
+  return Math.max((endDate.getTime() - startDate.getTime()) / 36e5, 0);
 }
 
 async function handleUsers(request, response) {
@@ -294,6 +390,89 @@ async function handleSession(request, response) {
   });
 }
 
+function getNeighborhoodFromAddress(address) {
+  const parts = String(address || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return parts[1] || parts[0] || 'Região não informada';
+}
+
+function getStreetFromAddress(address) {
+  return (
+    String(address || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)[0] || 'Local não informado'
+  );
+}
+
+function incrementCounter(map, key) {
+  map.set(key, (map.get(key) || 0) + 1);
+}
+
+function mapToSortedDistribution(map) {
+  return Array.from(map.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+function buildAdminMetrics() {
+  const rows = db
+    .prepare(
+      `
+        SELECT requests.*, users.name AS user_name, users.email AS user_email
+        FROM requests
+        LEFT JOIN users ON users.id = requests.user_id
+      `,
+    )
+    .all();
+  const records = rows.map(serializeRequest);
+  const statusDistribution = new Map();
+  const priorityDistribution = new Map();
+  const regionDistribution = new Map();
+  const recurringMap = new Map();
+  const closedDurations = [];
+
+  for (const record of records) {
+    const priority = record.attributes?.priority || 'Media';
+    const region = getNeighborhoodFromAddress(record.address);
+    const recurringKey = `${getStreetFromAddress(record.address)} · ${region}`;
+
+    incrementCounter(statusDistribution, record.status);
+    incrementCounter(priorityDistribution, priority);
+    incrementCounter(regionDistribution, region);
+    incrementCounter(recurringMap, recurringKey);
+
+    if (record.status === 'closed') {
+      const duration = differenceInHours(record.requested_datetime, record.updated_datetime);
+
+      if (duration !== null) {
+        closedDurations.push(duration);
+      }
+    }
+  }
+
+  const totalResolvedHours = closedDurations.reduce((sum, value) => sum + value, 0);
+
+  return {
+    total: records.length,
+    open: records.filter((record) => record.status === 'open' || record.status === 'in_progress').length,
+    resolved: records.filter((record) => record.status === 'closed').length,
+    in_analysis: records.filter((record) => record.status === 'acknowledged').length,
+    canceled: records.filter((record) => record.status === 'canceled').length,
+    average_resolution_hours: closedDurations.length ? Number((totalResolvedHours / closedDurations.length).toFixed(1)) : 0,
+    status_distribution: mapToSortedDistribution(statusDistribution),
+    priority_distribution: mapToSortedDistribution(priorityDistribution),
+    region_distribution: mapToSortedDistribution(regionDistribution),
+    concentration_regions: mapToSortedDistribution(regionDistribution).slice(0, 5),
+    recurring_locations: mapToSortedDistribution(recurringMap)
+      .filter((item) => item.count > 1)
+      .slice(0, 5),
+  };
+}
+
 async function handleRequest(request, response) {
   const url = new URL(request.url || '/', `http://${request.headers.host}`);
   const pathname = url.pathname;
@@ -320,6 +499,7 @@ async function handleRequest(request, response) {
     sendJson(response, 200, {
       ok: true,
       database: DB_PATH,
+      confirmations: db.prepare('SELECT COUNT(*) AS total FROM request_confirmations').get().total,
       requests: db.prepare('SELECT COUNT(*) AS total FROM requests').get().total,
       uploads: UPLOAD_DIR,
       users: db.prepare('SELECT COUNT(*) AS total FROM users').get().total,
@@ -352,7 +532,15 @@ async function handleRequest(request, response) {
     return;
   }
 
+  if (request.method === 'GET' && pathname === '/admin/metrics.json') {
+    sendJson(response, 200, buildAdminMetrics());
+    return;
+  }
+
   if (request.method === 'GET' && pathname === '/requests.json') {
+    const statusFilter = url.searchParams.get('status');
+    const priorityFilter = url.searchParams.get('priority');
+    const locationFilter = String(url.searchParams.get('location') || '').trim().toLowerCase();
     const rows = db
       .prepare(
         `
@@ -363,14 +551,32 @@ async function handleRequest(request, response) {
         `,
       )
       .all();
-    sendJson(
-      response,
-      200,
-      rows.map((row) => ({
+    const records = rows
+      .map((row) => ({
         ...serializeRequest(row),
         history: getHistory(row.service_request_id),
-      })),
-    );
+      }))
+      .filter((record) => {
+        if (statusFilter && record.status !== statusFilter) {
+          return false;
+        }
+
+        if (priorityFilter && record.attributes?.priority !== priorityFilter) {
+          return false;
+        }
+
+        if (locationFilter) {
+          const searchableLocation = `${record.address} ${record.attributes?.reference || ''}`.toLowerCase();
+
+          if (!searchableLocation.includes(locationFilter)) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+    sendJson(response, 200, records);
     return;
   }
 
@@ -380,7 +586,7 @@ async function handleRequest(request, response) {
       const serviceRequestId = nextServiceRequestId();
       const timestamp = nowIso();
       const statusNotes = 'Solicitação registrada pela API 3111.';
-      const attributes = body.attributes || {};
+      const attributes = enrichAttributes(body.attributes || {}, 0);
       const description = String(body.description || '').trim();
       const address = String(body.address_string || '').trim();
       const lat = String(body.lat || '').trim();
@@ -447,6 +653,50 @@ async function handleRequest(request, response) {
   }
 
   const requestMatch = pathname.match(/^\/requests\/([^/]+)\.json$/);
+  const confirmationMatch = pathname.match(/^\/requests\/([^/]+)\/confirmations\.json$/);
+
+  if (request.method === 'POST' && confirmationMatch) {
+    try {
+      const serviceRequestId = decodeURIComponent(confirmationMatch[1]);
+      const record = getRequest(serviceRequestId);
+
+      if (!record) {
+        sendJson(response, 404, { error: 'Solicitação não encontrada.' });
+        return;
+      }
+
+      const body = await readBody(request);
+      const userId = Number(body.user_id);
+
+      if (!Number.isFinite(userId) || userId <= 0) {
+        sendJson(response, 400, { error: 'user_id é obrigatório para confirmar uma ocorrência.' });
+        return;
+      }
+
+      const result = db
+        .prepare(
+          'INSERT OR IGNORE INTO request_confirmations (service_request_id, user_id, created_at) VALUES (?, ?, ?)',
+        )
+        .run(serviceRequestId, userId, nowIso());
+
+      if (result.changes > 0) {
+        insertHistory(serviceRequestId, record.status, 'Ocorrência confirmada por outro cidadão.');
+      }
+
+      refreshPriorityAttributes(serviceRequestId);
+
+      sendJson(response, 200, {
+        already_confirmed: result.changes === 0,
+        request: {
+          ...getRequest(serviceRequestId),
+          history: getHistory(serviceRequestId),
+        },
+      });
+    } catch (error) {
+      sendJson(response, 400, { error: error.message || 'JSON inválido.' });
+    }
+    return;
+  }
 
   if (request.method === 'GET' && requestMatch) {
     const serviceRequestId = decodeURIComponent(requestMatch[1]);
@@ -507,7 +757,9 @@ async function handleRequest(request, response) {
       'POST /requests.json',
       'GET /requests/:id.json',
       'PATCH /requests/:id.json',
+      'POST /requests/:id/confirmations.json',
       'GET /requests/:id/history.json',
+      'GET /admin/metrics.json',
       'GET /uploads/:filename',
       'POST /users.json',
       'POST /sessions.json',

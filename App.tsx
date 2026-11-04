@@ -23,10 +23,13 @@ import {
 import MapView, { MapPressEvent, Marker, Region } from 'react-native-maps';
 import {
   checkOpen311Api,
+  confirmOpen311Request,
   createOpen311User,
   createOpen311Request,
+  fetchOpen311AdminMetrics,
   fetchOpen311Requests,
   getOpen311ModeLabel,
+  Open311AdminMetrics,
   loginOpen311User,
   Open311StoredRequest,
   Open311User,
@@ -36,8 +39,11 @@ import {
 type ReportStatus = 'Aberto' | 'Em análise' | 'Em andamento' | 'Concluído' | 'Cancelado';
 type ReportPriority = 'Baixa' | 'Media' | 'Alta';
 type LocationStatus = 'checking' | 'granted' | 'denied' | 'unavailable';
-type Tab = 'mapa' | 'registrar' | 'ocorrencias';
+type Tab = 'mapa' | 'registrar' | 'ocorrencias' | 'painel';
 type AuthMode = 'login' | 'register';
+type CriterionScore = 1 | 2 | 3;
+type StatusFilter = ReportStatus | 'Todos';
+type PriorityFilter = ReportPriority | 'Todas';
 
 type Coordinate = {
   latitude: number;
@@ -56,7 +62,12 @@ type Report = {
   neighborhood: string;
   reference: string;
   description: string;
+  confirmations: number;
+  impact: CriterionScore;
   priority: ReportPriority;
+  priorityScore: number;
+  risk: CriterionScore;
+  severity: CriterionScore;
   status: ReportStatus;
   createdAt: string;
   latitude: string;
@@ -100,7 +111,12 @@ const initialReports: Report[] = [
     neighborhood: 'Centro',
     reference: 'Proximo ao ponto de onibus',
     description: 'Buraco grande na faixa da direita, causando desvio brusco.',
+    confirmations: 7,
+    impact: 3,
     priority: 'Alta',
+    priorityScore: 25,
+    risk: 3,
+    severity: 3,
     status: 'Em andamento',
     createdAt: '25/05/2026',
     latitude: '-23.5505',
@@ -131,7 +147,12 @@ const initialReports: Report[] = [
     neighborhood: 'Jardim Primavera',
     reference: 'Em frente ao mercado',
     description: 'Pavimento cedendo depois da chuva.',
+    confirmations: 4,
+    impact: 2,
     priority: 'Media',
+    priorityScore: 17,
+    risk: 2,
+    severity: 3,
     status: 'Em análise',
     createdAt: '24/05/2026',
     latitude: '-23.5538',
@@ -157,7 +178,12 @@ const initialReports: Report[] = [
     neighborhood: 'Vila Nova',
     reference: 'Esquina com Rua Minas Gerais',
     description: 'Buraco pequeno, mas com risco para motos e bicicletas.',
+    confirmations: 2,
+    impact: 1,
     priority: 'Baixa',
+    priorityScore: 11,
+    risk: 2,
+    severity: 1,
     status: 'Concluído',
     createdAt: '22/05/2026',
     latitude: '-23.5481',
@@ -190,6 +216,9 @@ const emptyForm = {
   reference: '',
   description: '',
   priority: 'Media' as ReportPriority,
+  severity: '2',
+  risk: '2',
+  impact: '2',
   latitude: '',
   longitude: '',
   photoData: '',
@@ -204,8 +233,15 @@ const emptyAuthForm = {
 };
 
 const statusOptions: ReportStatus[] = ['Aberto', 'Em análise', 'Em andamento', 'Concluído', 'Cancelado'];
+const statusFilterOptions: StatusFilter[] = ['Todos', ...statusOptions];
 const statusFlow: ReportStatus[] = ['Aberto', 'Em análise', 'Em andamento', 'Concluído'];
 const priorities: ReportPriority[] = ['Baixa', 'Media', 'Alta'];
+const priorityFilterOptions: PriorityFilter[] = ['Todas', ...priorities];
+const criterionOptions: { label: string; value: CriterionScore }[] = [
+  { label: 'Baixo', value: 1 },
+  { label: 'Médio', value: 2 },
+  { label: 'Alto', value: 3 },
+];
 
 function fromOpen311Status(status: string): ReportStatus {
   switch (status) {
@@ -229,6 +265,58 @@ function toReportPriority(priority?: string): ReportPriority {
   }
 
   return 'Media';
+}
+
+function toCriterionScore(value?: number | string): CriterionScore {
+  const numericValue = Number(value);
+
+  if (numericValue >= 3) {
+    return 3;
+  }
+
+  if (numericValue <= 1) {
+    return 1;
+  }
+
+  return 2;
+}
+
+function calculatePriorityScore({
+  confirmations,
+  impact,
+  risk,
+  severity,
+}: {
+  confirmations: number;
+  impact: CriterionScore;
+  risk: CriterionScore;
+  severity: CriterionScore;
+}) {
+  return severity * 3 + risk * 3 + impact * 2 + Math.min(confirmations, 10);
+}
+
+function priorityFromScore(score: number): ReportPriority {
+  if (score >= 20) {
+    return 'Alta';
+  }
+
+  if (score >= 13) {
+    return 'Media';
+  }
+
+  return 'Baixa';
+}
+
+function getPriorityMeta(priority: ReportPriority) {
+  switch (priority) {
+    case 'Alta':
+      return { color: palette.red, background: palette.softRed };
+    case 'Media':
+      return { color: palette.yellow, background: palette.softYellow };
+    case 'Baixa':
+    default:
+      return { color: palette.green, background: palette.softGreen };
+  }
 }
 
 function formatApiDate(value?: string, includeTime = false) {
@@ -260,10 +348,78 @@ function splitAddress(address: string) {
   };
 }
 
+function incrementCount(map: Map<string, number>, key: string) {
+  map.set(key, (map.get(key) || 0) + 1);
+}
+
+function sortedDistribution(map: Map<string, number>) {
+  return Array.from(map.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+function toOpen311StatusForMetrics(status: ReportStatus) {
+  switch (status) {
+    case 'Em análise':
+      return 'acknowledged';
+    case 'Em andamento':
+      return 'in_progress';
+    case 'Concluído':
+      return 'closed';
+    case 'Cancelado':
+      return 'canceled';
+    case 'Aberto':
+    default:
+      return 'open';
+  }
+}
+
+function buildLocalAdminMetrics(reports: Report[]): Open311AdminMetrics {
+  const statusDistribution = new Map<string, number>();
+  const priorityDistribution = new Map<string, number>();
+  const regionDistribution = new Map<string, number>();
+  const recurringLocations = new Map<string, number>();
+
+  reports.forEach((report) => {
+    incrementCount(statusDistribution, toOpen311StatusForMetrics(report.status));
+    incrementCount(priorityDistribution, report.priority);
+    incrementCount(regionDistribution, report.neighborhood);
+    incrementCount(recurringLocations, `${report.street} · ${report.neighborhood}`);
+  });
+
+  return {
+    average_resolution_hours: 0,
+    canceled: reports.filter((report) => report.status === 'Cancelado').length,
+    concentration_regions: sortedDistribution(regionDistribution).slice(0, 5),
+    in_analysis: reports.filter((report) => report.status === 'Em análise').length,
+    open: reports.filter((report) => report.status === 'Aberto' || report.status === 'Em andamento').length,
+    priority_distribution: sortedDistribution(priorityDistribution),
+    recurring_locations: sortedDistribution(recurringLocations)
+      .filter((item) => item.count > 1)
+      .slice(0, 5),
+    region_distribution: sortedDistribution(regionDistribution),
+    resolved: reports.filter((report) => report.status === 'Concluído').length,
+    status_distribution: sortedDistribution(statusDistribution),
+    total: reports.length,
+  };
+}
+
 function mapOpen311RecordToReport(record: Open311StoredRequest, index: number): Report {
   const address = splitAddress(record.address || '');
   const status = fromOpen311Status(record.status);
   const numericId = Number(String(record.service_request_id).replace(/\D/g, ''));
+  const confirmations = Number(record.confirmation_count ?? record.attributes?.confirmations ?? 0);
+  const severity = toCriterionScore(record.attributes?.severity);
+  const risk = toCriterionScore(record.attributes?.risk);
+  const impact = toCriterionScore(record.attributes?.impact);
+  const priorityScore =
+    Number(record.attributes?.priority_score) ||
+    calculatePriorityScore({
+      confirmations,
+      impact,
+      risk,
+      severity,
+    });
   const history =
     record.history && record.history.length > 0
       ? record.history.map((item) => ({
@@ -285,7 +441,12 @@ function mapOpen311RecordToReport(record: Open311StoredRequest, index: number): 
     neighborhood: address.neighborhood,
     reference: record.attributes?.reference || 'Sem ponto de referência',
     description: record.description,
-    priority: toReportPriority(record.attributes?.priority),
+    confirmations,
+    impact,
+    priority: toReportPriority(record.attributes?.priority ?? priorityFromScore(priorityScore)),
+    priorityScore,
+    risk,
+    severity,
     status,
     createdAt: formatApiDate(record.requested_datetime),
     latitude: String(record.lat),
@@ -324,6 +485,10 @@ export default function App() {
   const [authForm, setAuthForm] = useState(emptyAuthForm);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isLoadingReports, setIsLoadingReports] = useState(false);
+  const [locationFilter, setLocationFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('Todos');
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('Todas');
+  const [adminMetrics, setAdminMetrics] = useState<Open311AdminMetrics | null>(null);
 
   const selectedReport = useMemo(
     () => reports.find((report) => report.id === selectedReportId) ?? null,
@@ -339,6 +504,33 @@ export default function App() {
 
     return { openReports, highPriority, completed, total: reports.length };
   }, [reports]);
+
+  const filteredReports = useMemo(() => {
+    const location = locationFilter.trim().toLowerCase();
+
+    return reports.filter((report) => {
+      const matchesLocation =
+        !location ||
+        `${report.street} ${report.neighborhood} ${report.reference}`.toLowerCase().includes(location);
+      const matchesStatus = statusFilter === 'Todos' || report.status === statusFilter;
+      const matchesPriority = priorityFilter === 'Todas' || report.priority === priorityFilter;
+
+      return matchesLocation && matchesStatus && matchesPriority;
+    });
+  }, [locationFilter, priorityFilter, reports, statusFilter]);
+
+  const panelMetrics = useMemo(() => adminMetrics ?? buildLocalAdminMetrics(reports), [adminMetrics, reports]);
+  const hotspotRegions = useMemo(() => buildLocalAdminMetrics(filteredReports).concentration_regions, [filteredReports]);
+  const formSeverity = toCriterionScore(form.severity);
+  const formRisk = toCriterionScore(form.risk);
+  const formImpact = toCriterionScore(form.impact);
+  const formPriorityScore = calculatePriorityScore({
+    confirmations: 0,
+    impact: formImpact,
+    risk: formRisk,
+    severity: formSeverity,
+  });
+  const formPriority = priorityFromScore(formPriorityScore);
 
   useEffect(() => {
     screenAnimation.setValue(0);
@@ -386,6 +578,7 @@ export default function App() {
     async function loadReportsFromApi() {
       setIsLoadingReports(true);
       const result = await fetchOpen311Requests();
+      const metricsResult = await fetchOpen311AdminMetrics();
 
       if (!isMounted) {
         return;
@@ -393,6 +586,10 @@ export default function App() {
 
       if (result.requests.length > 0) {
         setReports(result.requests.map(mapOpen311RecordToReport));
+      }
+
+      if (metricsResult.metrics) {
+        setAdminMetrics(metricsResult.metrics);
       }
 
       setApiMessage(result.message);
@@ -607,23 +804,28 @@ export default function App() {
 
     setIsAuthenticating(true);
 
-    const result =
-      authMode === 'register'
-        ? await createOpen311User({ email, password, name })
-        : await loginOpen311User({ email, password });
+    try {
+      const result =
+        authMode === 'register'
+          ? await createOpen311User({ email, password, name })
+          : await loginOpen311User({ email, password });
 
-    setIsAuthenticating(false);
-    setApiMessage(result.message);
-    setApiSynced(result.synced);
+      setApiMessage(result.message);
+      setApiSynced(result.synced);
 
-    if (!result.user) {
-      Alert.alert('Acesso não realizado', result.message);
-      return;
+      if (!result.user) {
+        Alert.alert('Acesso não realizado', result.message);
+        return;
+      }
+
+      setCurrentUser(result.user);
+      setAuthForm(emptyAuthForm);
+      showSuccess(authMode === 'register' ? 'Cadastro criado com sucesso' : 'Entrada realizada');
+    } catch {
+      Alert.alert('Erro no cadastro', 'Não foi possível concluir a operação. Tente novamente.');
+    } finally {
+      setIsAuthenticating(false);
     }
-
-    setCurrentUser(result.user);
-    setAuthForm(emptyAuthForm);
-    showSuccess(authMode === 'register' ? 'Cadastro criado com sucesso' : 'Entrada realizada');
   }
 
   function logout() {
@@ -751,17 +953,25 @@ export default function App() {
     }
 
     setIsSubmitting(true);
+    const severity = toCriterionScore(form.severity);
+    const risk = toCriterionScore(form.risk);
+    const impact = toCriterionScore(form.impact);
+    const priorityScore = calculatePriorityScore({ confirmations: 0, impact, risk, severity });
+    const calculatedPriority = priorityFromScore(priorityScore);
 
     const apiResult = await createOpen311Request({
       address: `${form.street.trim()}, ${form.neighborhood.trim()}`,
       description: form.description.trim(),
+      impact,
       latitude: form.latitude,
       longitude: form.longitude,
       mediaData: form.photoData || undefined,
       mediaType: form.photoMimeType || undefined,
       mediaUrl: form.photoUri || undefined,
-      priority: form.priority,
+      priority: calculatedPriority,
       reference: form.reference.trim() || 'Sem ponto de referência',
+      risk,
+      severity,
       userId: currentUser.id,
     });
 
@@ -773,7 +983,12 @@ export default function App() {
       neighborhood: form.neighborhood.trim(),
       reference: form.reference.trim() || 'Sem ponto de referência',
       description: form.description.trim(),
-      priority: form.priority,
+      confirmations: 0,
+      impact,
+      priority: calculatedPriority,
+      priorityScore,
+      risk,
+      severity,
       status: 'Aberto',
       createdAt,
       latitude: form.latitude,
@@ -851,6 +1066,64 @@ export default function App() {
     changeReportStatus(reportId, nextStatus);
   }
 
+  async function confirmReport(reportId: number) {
+    if (!currentUser) {
+      return;
+    }
+
+    const report = reports.find((item) => item.id === reportId);
+
+    if (!report) {
+      return;
+    }
+
+    const apiResult = await confirmOpen311Request({
+      serviceRequestId: report.serviceRequestId ?? String(report.id),
+      userId: currentUser.id,
+    });
+
+    if (apiResult.request) {
+      const updatedReport = mapOpen311RecordToReport(apiResult.request, 0);
+      setReports((current) => current.map((item) => (item.id === reportId ? updatedReport : item)));
+    } else {
+      setReports((current) =>
+        current.map((item) => {
+          if (item.id !== reportId) {
+            return item;
+          }
+
+          const confirmations = item.confirmations + 1;
+          const priorityScore = calculatePriorityScore({
+            confirmations,
+            impact: item.impact,
+            risk: item.risk,
+            severity: item.severity,
+          });
+
+          return {
+            ...item,
+            confirmations,
+            priority: priorityFromScore(priorityScore),
+            priorityScore,
+            syncedWithOpen311: apiResult.synced,
+            history: [
+              ...item.history,
+              {
+                status: item.status,
+                date: formatNow(),
+                description: 'Ocorrência confirmada por outro cidadão.',
+              },
+            ],
+          };
+        }),
+      );
+    }
+
+    setApiMessage(apiResult.message);
+    setApiSynced(apiResult.synced);
+    showSuccess(apiResult.alreadyConfirmed ? 'Confirmação já registrada' : 'Ocorrência confirmada');
+  }
+
   if (!currentUser) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -911,6 +1184,7 @@ export default function App() {
           <TabButton label="Mapa" tab="mapa" activeTab={activeTab} setActiveTab={setActiveTab} />
           <TabButton label="Registro" tab="registrar" activeTab={activeTab} setActiveTab={setActiveTab} />
           <TabButton label="Status" tab="ocorrencias" activeTab={activeTab} setActiveTab={setActiveTab} />
+          <TabButton label="Painel" tab="painel" activeTab={activeTab} setActiveTab={setActiveTab} />
         </View>
 
         <Animated.View
@@ -950,7 +1224,7 @@ export default function App() {
                   showsUserLocation={locationStatus === 'granted'}
                   style={styles.map}
                 >
-                  {reports.map((report) => (
+                  {filteredReports.map((report) => (
                     <Marker
                       key={report.id}
                       coordinate={{
@@ -1018,6 +1292,24 @@ export default function App() {
                 <View style={styles.apiStatusCard}>
                   <View style={[styles.apiStatusDot, !apiSynced && styles.apiStatusDotWarning]} />
                   <Text style={styles.apiStatusText}>{apiMessage}</Text>
+                </View>
+
+                <FilterPanel
+                  locationFilter={locationFilter}
+                  priorityFilter={priorityFilter}
+                  statusFilter={statusFilter}
+                  onChangeLocation={setLocationFilter}
+                  onChangePriority={setPriorityFilter}
+                  onChangeStatus={setStatusFilter}
+                />
+
+                <View style={styles.insightCard}>
+                  <Text style={styles.insightTitle}>Concentração no mapa</Text>
+                  <Text style={styles.insightText}>
+                    {hotspotRegions.length > 0
+                      ? `${hotspotRegions[0].name} concentra ${hotspotRegions[0].count} ocorrência(s) no filtro atual.`
+                      : 'Nenhuma região encontrada com os filtros atuais.'}
+                  </Text>
                 </View>
 
                 {isLoadingReports ? (
@@ -1120,24 +1412,33 @@ export default function App() {
                   multiline
                 />
 
-                <Text style={styles.inputLabel}>Prioridade</Text>
-                <View style={styles.segmented}>
-                  {priorities.map((priority) => (
-                    <Pressable
-                      key={priority}
-                      style={({ pressed }) => [
-                        styles.segment,
-                        form.priority === priority && styles.segmentActive,
-                        pressed && styles.buttonPressed,
-                      ]}
-                      onPress={() => updateForm('priority', priority)}
-                    >
-                      <Text style={[styles.segmentText, form.priority === priority && styles.segmentTextActive]}>
-                        {priority}
-                      </Text>
-                    </Pressable>
-                  ))}
+                <View style={styles.priorityPreview}>
+                  <View>
+                    <Text style={styles.selectedPlaceLabel}>Prioridade calculada</Text>
+                    <Text style={styles.priorityPreviewValue}>{formPriority}</Text>
+                  </View>
+                  <View style={[styles.priorityScoreBadge, { backgroundColor: getPriorityMeta(formPriority).background }]}>
+                    <Text style={[styles.priorityScoreText, { color: getPriorityMeta(formPriority).color }]}>
+                      Score {formPriorityScore}
+                    </Text>
+                  </View>
                 </View>
+
+                <CriterionSelector
+                  label="Gravidade do dano"
+                  value={formSeverity}
+                  onChange={(value) => updateForm('severity', String(value))}
+                />
+                <CriterionSelector
+                  label="Risco para pedestres e veículos"
+                  value={formRisk}
+                  onChange={(value) => updateForm('risk', String(value))}
+                />
+                <CriterionSelector
+                  label="Impacto no trânsito/local"
+                  value={formImpact}
+                  onChange={(value) => updateForm('impact', String(value))}
+                />
 
                 <View style={styles.photoActions}>
                   {form.photoUri ? <Image source={{ uri: form.photoUri }} style={styles.formPhotoPreview} /> : null}
@@ -1178,9 +1479,18 @@ export default function App() {
                 <View>
                   <Text style={[styles.title, isCompact && styles.titleCompact]}>Ocorrências registradas</Text>
                   <Text style={[styles.paragraph, isCompact && styles.paragraphCompact]}>
-                    Toque em um card para abrir detalhes, histórico e alteração de status.
+                    Filtre, confirme ocorrências e acompanhe histórico, recorrência e alteração de status.
                   </Text>
                 </View>
+
+                <FilterPanel
+                  locationFilter={locationFilter}
+                  priorityFilter={priorityFilter}
+                  statusFilter={statusFilter}
+                  onChangeLocation={setLocationFilter}
+                  onChangePriority={setPriorityFilter}
+                  onChangeStatus={setStatusFilter}
+                />
 
                 <View style={[styles.statsGrid, isCompact && styles.statsGridCompact]}>
                   <StatCard label="Total" value={stats.total} tone="blue" />
@@ -1188,7 +1498,7 @@ export default function App() {
                   <StatCard label="Concluídas" value={stats.completed} tone="green" />
                 </View>
 
-                {reports.map((report) => (
+                {filteredReports.map((report) => (
                   <Pressable
                     key={report.id}
                     style={({ pressed }) => [styles.reportCard, pressed && styles.cardPressed]}
@@ -1217,6 +1527,8 @@ export default function App() {
 
                     <View style={styles.reportFooter}>
                       <Text style={styles.footerText}>Prioridade {report.priority}</Text>
+                      <Text style={styles.footerText}>Score {report.priorityScore}</Text>
+                      <Text style={styles.footerText}>{report.confirmations} confirmações</Text>
                       <Text style={styles.footerText}>{report.createdAt}</Text>
                       {report.citizenName ? <Text style={styles.footerText}>{report.citizenName}</Text> : null}
                     </View>
@@ -1234,10 +1546,61 @@ export default function App() {
                       >
                         <Text style={styles.statusButtonText}>Avançar status</Text>
                       </Pressable>
+                      <Pressable
+                        style={({ pressed }) => [styles.confirmButton, pressed && styles.buttonPressed]}
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          confirmReport(report.id);
+                        }}
+                      >
+                        <Text style={styles.confirmButtonText}>Confirmar</Text>
+                      </Pressable>
                       <Text style={styles.detailsHint}>Ver detalhes</Text>
                     </View>
                   </Pressable>
                 ))}
+
+                {filteredReports.length === 0 ? (
+                  <View style={styles.emptyStateCard}>
+                    <Text style={styles.emptyStateTitle}>Nenhuma ocorrência encontrada</Text>
+                    <Text style={styles.emptyStateText}>Ajuste os filtros ou registre uma nova ocorrência no mapa.</Text>
+                  </View>
+                ) : null}
+              </View>
+            </ScrollView>
+          )}
+
+          {activeTab === 'painel' && (
+            <ScrollView
+              contentContainerStyle={[styles.content, isCompact && styles.contentCompact]}
+              keyboardDismissMode="interactive"
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.section}>
+                <View>
+                  <Text style={[styles.title, isCompact && styles.titleCompact]}>Painel administrativo</Text>
+                  <Text style={[styles.paragraph, isCompact && styles.paragraphCompact]}>
+                    Indicadores operacionais para triagem, acompanhamento e interoperabilidade Open311.
+                  </Text>
+                </View>
+
+                <View style={[styles.statsGrid, isCompact && styles.statsGridCompact]}>
+                  <StatCard label="Abertas" value={panelMetrics.open} tone="blue" />
+                  <StatCard label="Em análise" value={panelMetrics.in_analysis} tone="red" />
+                  <StatCard label="Resolvidas" value={panelMetrics.resolved} tone="green" />
+                </View>
+
+                <View style={[styles.statsGrid, isCompact && styles.statsGridCompact]}>
+                  <StatCard label="Total" value={panelMetrics.total} tone="blue" />
+                  <StatCard label="Canceladas" value={panelMetrics.canceled} tone="red" />
+                  <StatCard label="Horas médias" value={Math.round(panelMetrics.average_resolution_hours)} tone="green" />
+                </View>
+
+                <DistributionCard title="Distribuição por região" items={panelMetrics.region_distribution} />
+                <DistributionCard title="Regiões com maior concentração" items={panelMetrics.concentration_regions} />
+                <DistributionCard title="Locais recorrentes" items={panelMetrics.recurring_locations} emptyText="Sem recorrência identificada ainda." />
+                <DistributionCard title="Distribuição por prioridade" items={panelMetrics.priority_distribution} />
               </View>
             </ScrollView>
           )}
@@ -1269,6 +1632,7 @@ export default function App() {
         report={selectedReport}
         onClose={() => setSelectedReportId(null)}
         onChangeStatus={changeReportStatus}
+        onConfirm={confirmReport}
       />
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -1444,6 +1808,126 @@ function StatCard({ label, value, tone }: { label: string; value: number; tone: 
   );
 }
 
+function FilterPanel({
+  locationFilter,
+  priorityFilter,
+  statusFilter,
+  onChangeLocation,
+  onChangePriority,
+  onChangeStatus,
+}: {
+  locationFilter: string;
+  priorityFilter: PriorityFilter;
+  statusFilter: StatusFilter;
+  onChangeLocation: (value: string) => void;
+  onChangePriority: (value: PriorityFilter) => void;
+  onChangeStatus: (value: StatusFilter) => void;
+}) {
+  return (
+    <View style={styles.filterPanel}>
+      <Input label="Filtrar por localização" value={locationFilter} onChangeText={onChangeLocation} />
+
+      <Text style={styles.inputLabel}>Status</Text>
+      <View style={styles.chipWrap}>
+        {statusFilterOptions.map((status) => (
+          <Pressable
+            key={status}
+            style={({ pressed }) => [
+              styles.filterChip,
+              statusFilter === status && styles.filterChipActive,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={() => onChangeStatus(status)}
+          >
+            <Text style={[styles.filterChipText, statusFilter === status && styles.filterChipTextActive]}>{status}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={styles.inputLabel}>Prioridade</Text>
+      <View style={styles.chipWrap}>
+        {priorityFilterOptions.map((priority) => (
+          <Pressable
+            key={priority}
+            style={({ pressed }) => [
+              styles.filterChip,
+              priorityFilter === priority && styles.filterChipActive,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={() => onChangePriority(priority)}
+          >
+            <Text style={[styles.filterChipText, priorityFilter === priority && styles.filterChipTextActive]}>{priority}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function CriterionSelector({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: CriterionScore;
+  onChange: (value: CriterionScore) => void;
+}) {
+  return (
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>{label}</Text>
+      <View style={styles.segmented}>
+        {criterionOptions.map((option) => (
+          <Pressable
+            key={option.value}
+            style={({ pressed }) => [
+              styles.segment,
+              value === option.value && styles.segmentActive,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={() => onChange(option.value)}
+          >
+            <Text style={[styles.segmentText, value === option.value && styles.segmentTextActive]}>{option.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function DistributionCard({
+  emptyText = 'Nenhum dado disponível.',
+  items,
+  title,
+}: {
+  emptyText?: string;
+  items: { count: number; name: string }[];
+  title: string;
+}) {
+  const max = Math.max(...items.map((item) => item.count), 1);
+
+  return (
+    <View style={styles.distributionCard}>
+      <Text style={styles.modalSectionTitle}>{title}</Text>
+      {items.length > 0 ? (
+        items.map((item) => (
+          <View key={item.name} style={styles.distributionRow}>
+            <View style={styles.distributionHeader}>
+              <Text style={styles.distributionName}>{item.name}</Text>
+              <Text style={styles.distributionCount}>{item.count}</Text>
+            </View>
+            <View style={styles.distributionTrack}>
+              <View style={[styles.distributionFill, { width: `${Math.max((item.count / max) * 100, 8)}%` }]} />
+            </View>
+          </View>
+        ))
+      ) : (
+        <Text style={styles.modalDescription}>{emptyText}</Text>
+      )}
+    </View>
+  );
+}
+
 function Input({
   label,
   value,
@@ -1487,11 +1971,13 @@ function ReportDetailsModal({
   report,
   onClose,
   onChangeStatus,
+  onConfirm,
 }: {
   animation: Animated.Value;
   report: Report | null;
   onClose: () => void;
   onChangeStatus: (reportId: number, status: ReportStatus) => void;
+  onConfirm: (reportId: number) => void;
 }) {
   if (!report) {
     return null;
@@ -1554,6 +2040,25 @@ function ReportDetailsModal({
                 <Text style={styles.modalInfoLabel}>Prioridade</Text>
                 <Text style={styles.modalInfoValue}>{report.priority}</Text>
               </View>
+            </View>
+
+            <View style={styles.modalInfoGrid}>
+              <View style={styles.modalInfoCard}>
+                <Text style={styles.modalInfoLabel}>Score</Text>
+                <Text style={styles.modalInfoValue}>{report.priorityScore}</Text>
+              </View>
+              <View style={styles.modalInfoCard}>
+                <Text style={styles.modalInfoLabel}>Confirmações</Text>
+                <Text style={styles.modalInfoValue}>{report.confirmations}</Text>
+              </View>
+            </View>
+
+            <View style={styles.modalApiCard}>
+              <Text style={styles.modalInfoLabel}>Critérios de atenção</Text>
+              <Text style={styles.modalApiValue}>Gravidade: {report.severity} · Risco: {report.risk} · Impacto: {report.impact}</Text>
+              <Pressable style={({ pressed }) => [styles.confirmWideButton, pressed && styles.buttonPressed]} onPress={() => onConfirm(report.id)}>
+                <Text style={styles.confirmWideButtonText}>Confirmar esta ocorrência</Text>
+              </Pressable>
             </View>
 
             <View style={styles.modalApiCard}>
@@ -1659,7 +2164,11 @@ const styles = StyleSheet.create({
     backgroundColor: palette.background,
   },
   minimalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
     backgroundColor: palette.background,
     overflow: 'hidden',
   },
@@ -2125,6 +2634,60 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 18,
   },
+  filterPanel: {
+    backgroundColor: '#F6F8FC',
+    borderColor: palette.line,
+    borderWidth: 1,
+    borderRadius: 8,
+    gap: 11,
+    padding: 12,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  filterChip: {
+    backgroundColor: palette.card,
+    borderColor: palette.line,
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 38,
+    justifyContent: 'center',
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+  },
+  filterChipActive: {
+    backgroundColor: '#EEF4FF',
+    borderColor: '#C7D7FE',
+  },
+  filterChipText: {
+    color: palette.secondary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  filterChipTextActive: {
+    color: palette.blue,
+  },
+  insightCard: {
+    backgroundColor: '#F6F8FC',
+    borderColor: palette.line,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 14,
+  },
+  insightTitle: {
+    color: palette.text,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  insightText: {
+    color: palette.secondary,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+    marginTop: 5,
+  },
   locationCard: {
     backgroundColor: '#F6F8FC',
     borderColor: palette.line,
@@ -2264,6 +2827,33 @@ const styles = StyleSheet.create({
     gap: 7,
     padding: 16,
     ...cardShadow,
+  },
+  priorityPreview: {
+    alignItems: 'center',
+    backgroundColor: palette.card,
+    borderColor: palette.line,
+    borderWidth: 1,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    padding: 16,
+    ...cardShadow,
+  },
+  priorityPreviewValue: {
+    color: palette.text,
+    fontSize: 22,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  priorityScoreBadge: {
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  priorityScoreText: {
+    fontSize: 13,
+    fontWeight: '900',
   },
   selectedPlaceLabel: {
     color: palette.secondary,
@@ -2480,6 +3070,42 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
+  confirmButton: {
+    alignItems: 'center',
+    backgroundColor: palette.softGreen,
+    borderColor: '#BBE8CA',
+    borderWidth: 1,
+    borderRadius: 8,
+    minHeight: 42,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  confirmButtonText: {
+    color: palette.green,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  emptyStateCard: {
+    alignItems: 'center',
+    backgroundColor: palette.card,
+    borderColor: palette.line,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 18,
+    ...cardShadow,
+  },
+  emptyStateTitle: {
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  emptyStateText: {
+    color: palette.secondary,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 6,
+    textAlign: 'center',
+  },
   buttonPressed: {
     opacity: 0.72,
     transform: [{ scale: 0.985 }],
@@ -2656,6 +3282,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  confirmWideButton: {
+    alignItems: 'center',
+    backgroundColor: palette.softGreen,
+    borderColor: '#BBE8CA',
+    borderWidth: 1,
+    borderRadius: 8,
+    justifyContent: 'center',
+    marginTop: 8,
+    minHeight: 44,
+    paddingHorizontal: 12,
+  },
+  confirmWideButtonText: {
+    color: palette.green,
+    fontSize: 14,
+    fontWeight: '900',
+  },
   modalSection: {
     backgroundColor: palette.card,
     borderColor: palette.line,
@@ -2755,5 +3397,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginTop: 4,
+  },
+  distributionCard: {
+    backgroundColor: palette.card,
+    borderColor: palette.line,
+    borderWidth: 1,
+    borderRadius: 8,
+    gap: 13,
+    padding: 16,
+    ...cardShadow,
+  },
+  distributionRow: {
+    gap: 8,
+  },
+  distributionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  distributionName: {
+    color: palette.text,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  distributionCount: {
+    color: palette.secondary,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  distributionTrack: {
+    backgroundColor: '#EEF0F5',
+    borderRadius: 8,
+    height: 8,
+    overflow: 'hidden',
+  },
+  distributionFill: {
+    backgroundColor: palette.blue,
+    borderRadius: 8,
+    height: 8,
   },
 });

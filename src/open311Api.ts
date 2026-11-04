@@ -29,9 +29,15 @@ export type Open311StoredRequest = {
   long: string;
   media_url?: string;
   attributes?: {
+    confirmations?: number;
+    impact?: number;
     priority?: string;
+    priority_score?: number;
     reference?: string;
+    risk?: number;
+    severity?: number;
   };
+  confirmation_count?: number;
   user_id?: number;
   user?: Open311User | null;
   history?: {
@@ -44,6 +50,7 @@ export type Open311StoredRequest = {
 type Open311CreateInput = {
   address: string;
   description: string;
+  impact: number;
   latitude: string;
   longitude: string;
   mediaData?: string;
@@ -51,6 +58,8 @@ type Open311CreateInput = {
   mediaUrl?: string;
   priority: string;
   reference: string;
+  risk: number;
+  severity: number;
   userId?: number;
 };
 
@@ -63,6 +72,31 @@ type Open311AuthInput = {
   email: string;
   password: string;
   name?: string;
+};
+
+type Open311Filters = {
+  location?: string;
+  priority?: string;
+  status?: string;
+};
+
+type Open311ConfirmInput = {
+  serviceRequestId: string;
+  userId: number;
+};
+
+export type Open311AdminMetrics = {
+  average_resolution_hours: number;
+  canceled: number;
+  concentration_regions: { count: number; name: string }[];
+  in_analysis: number;
+  open: number;
+  priority_distribution: { count: number; name: string }[];
+  recurring_locations: { count: number; name: string }[];
+  region_distribution: { count: number; name: string }[];
+  resolved: number;
+  status_distribution: { count: number; name: string }[];
+  total: number;
 };
 
 declare const process: {
@@ -107,8 +141,11 @@ function buildOpen311Payload(input: Open311CreateInput) {
     media_type: input.mediaType,
     media_url: input.mediaUrl?.startsWith('http') ? input.mediaUrl : undefined,
     attributes: {
+      impact: input.impact,
       priority: input.priority,
       reference: input.reference,
+      risk: input.risk,
+      severity: input.severity,
     },
     user_id: input.userId,
   };
@@ -213,6 +250,26 @@ function getUserFromData(data: unknown) {
   return null;
 }
 
+function buildQueryString(filters?: Open311Filters) {
+  const params = new URLSearchParams();
+
+  if (filters?.location?.trim()) {
+    params.set('location', filters.location.trim());
+  }
+
+  if (filters?.priority && filters.priority !== 'Todas') {
+    params.set('priority', filters.priority);
+  }
+
+  if (filters?.status && filters.status !== 'Todos') {
+    params.set('status', toOpen311Status(filters.status as AppStatus));
+  }
+
+  const query = params.toString();
+
+  return query ? `?${query}` : '';
+}
+
 export function getOpen311ModeLabel() {
   return getBaseUrl() ? 'API 311 online' : 'API 311 local';
 }
@@ -296,10 +353,10 @@ export async function createOpen311User(input: Open311AuthInput) {
     };
   } catch {
     return {
-      message: 'API 311 indisponível. Não foi possível criar o cadastro.',
-      remote: true,
+      message: 'API 311 indisponível. Cadastro criado somente neste aparelho.',
+      remote: false,
       synced: false,
-      user: null,
+      user: buildLocalUser(input),
     };
   }
 }
@@ -357,7 +414,7 @@ export async function loginOpen311User(input: Open311AuthInput) {
   }
 }
 
-export async function fetchOpen311Requests() {
+export async function fetchOpen311Requests(filters?: Open311Filters) {
   const baseUrl = getBaseUrl();
 
   if (!baseUrl) {
@@ -372,7 +429,7 @@ export async function fetchOpen311Requests() {
   }
 
   try {
-    const response = await fetch(`${baseUrl}/requests.json`);
+    const response = await fetch(`${baseUrl}/requests.json${buildQueryString(filters)}`);
     const data = await readJsonResponse(response);
 
     if (!response.ok || !Array.isArray(data)) {
@@ -480,6 +537,103 @@ export async function updateOpen311RequestStatus(input: Open311StatusInput) {
   } catch {
     return {
       message: 'API 311 indisponível. Status atualizado localmente.',
+      remote: true,
+      synced: false,
+    };
+  }
+}
+
+export async function confirmOpen311Request(input: Open311ConfirmInput) {
+  const baseUrl = getBaseUrl();
+
+  if (!baseUrl) {
+    await wait(LOCAL_DELAY_MS);
+
+    return {
+      alreadyConfirmed: false,
+      message: 'Confirmação registrada no modo local da API 311.',
+      remote: false,
+      request: null as Open311StoredRequest | null,
+      synced: true,
+    };
+  }
+
+  try {
+    const response = await fetch(`${baseUrl}/requests/${input.serviceRequestId}/confirmations.json`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_id: input.userId,
+      }),
+    });
+    const data = await readJsonResponse(response);
+
+    if (!response.ok) {
+      return {
+        alreadyConfirmed: false,
+        message: getApiErrorMessage(data, 'Não foi possível confirmar a ocorrência.'),
+        remote: true,
+        request: null as Open311StoredRequest | null,
+        synced: false,
+      };
+    }
+
+    const objectData = data as { already_confirmed?: boolean; request?: Open311StoredRequest };
+
+    return {
+      alreadyConfirmed: Boolean(objectData.already_confirmed),
+      message: objectData.already_confirmed
+        ? 'Você já confirmou esta ocorrência.'
+        : 'Ocorrência confirmada na API 311.',
+      remote: true,
+      request: objectData.request ?? null,
+      synced: true,
+    };
+  } catch {
+    return {
+      alreadyConfirmed: false,
+      message: 'API 311 indisponível. Confirmação registrada localmente.',
+      remote: true,
+      request: null as Open311StoredRequest | null,
+      synced: false,
+    };
+  }
+}
+
+export async function fetchOpen311AdminMetrics() {
+  const baseUrl = getBaseUrl();
+
+  if (!baseUrl) {
+    await wait(LOCAL_DELAY_MS);
+
+    return {
+      message: 'Indicadores carregados no modo local.',
+      metrics: null as Open311AdminMetrics | null,
+      remote: false,
+      synced: true,
+    };
+  }
+
+  try {
+    const response = await fetch(`${baseUrl}/admin/metrics.json`);
+    const data = await readJsonResponse(response);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    return {
+      message: 'Indicadores carregados da API 311.',
+      metrics: data as Open311AdminMetrics,
+      remote: true,
+      synced: true,
+    };
+  } catch {
+    return {
+      message: 'API 311 indisponível. Indicadores calculados no app.',
+      metrics: null as Open311AdminMetrics | null,
       remote: true,
       synced: false,
     };

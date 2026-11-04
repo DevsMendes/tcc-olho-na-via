@@ -39,7 +39,8 @@
         {
           "locationWhenInUsePermission": "O Buraco Alerta usa sua localizacao em tempo real para marcar o buraco no mapa."
         }
-      ]
+      ],
+      "expo-status-bar"
     ]
   }
 }
