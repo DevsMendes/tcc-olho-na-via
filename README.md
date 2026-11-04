@@ -40,7 +40,7 @@ npx -v
 
 ```bash
 cd ~/Documents
-git clone https://github.com/DevsMendes/tcc-buraco-alerta.git olho-na-via
+git clone https://github.com/DevsMendes/tcc-olho-na-via.git olho-na-via
 cd olho-na-via
 npm install
 ```
