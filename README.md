@@ -38,12 +38,10 @@ npx -v
 
 ## Como baixar o projeto em outra maquina
 
-Substitua `URL_DO_REPOSITORIO` pela URL do GitHub do projeto.
-
 ```bash
 cd ~/Documents
-git clone URL_DO_REPOSITORIO
-cd buraco-alerta
+git clone https://github.com/DevsMendes/tcc-buraco-alerta.git olho-na-via
+cd olho-na-via
 npm install
 ```
 
@@ -94,7 +92,7 @@ Importante: o celular e o computador precisam estar na mesma rede Wi-Fi.
 Abra um Terminal dentro da pasta do projeto:
 
 ```bash
-cd ~/Documents/buraco-alerta
+cd ~/Documents/olho-na-via
 ./start-api3111.sh
 ```
 
@@ -127,7 +125,7 @@ http://SEU_IP_DO_COMPUTADOR:3111/health.json
 Abra outro Terminal dentro da pasta do projeto:
 
 ```bash
-cd ~/Documents/buraco-alerta
+cd ~/Documents/olho-na-via
 ./start-expo.sh --clear
 ```
 

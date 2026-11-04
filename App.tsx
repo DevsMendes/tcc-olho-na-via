@@ -44,6 +44,7 @@ type AuthMode = 'login' | 'register';
 type CriterionScore = 1 | 2 | 3;
 type StatusFilter = ReportStatus | 'Todos';
 type PriorityFilter = ReportPriority | 'Todas';
+type ThemeMode = 'light' | 'dark';
 
 type Coordinate = {
   latitude: number;
@@ -79,7 +80,7 @@ type Report = {
   syncedWithOpen311?: boolean;
 };
 
-const palette = {
+const lightPalette = {
   background: '#F7F8FC',
   card: '#FFFFFF',
   text: '#17171C',
@@ -95,7 +96,67 @@ const palette = {
   softGreen: '#EAF8EF',
   softYellow: '#FFF5DF',
   softRed: '#FFF0EF',
+  backdropBlue: '#EEF5FF',
+  backdropGreen: '#F2F7EF',
+  bluePressed: '#1D4ED8',
+  disabled: '#C8CEDA',
+  field: '#F6F8FC',
+  greenLine: '#BBE8CA',
+  handle: '#CED4DF',
+  inputPlaceholder: '#8D819E',
+  mapHint: 'rgba(255, 255, 255, 0.94)',
+  mapHintLine: 'rgba(228, 231, 239, 0.9)',
+  mapSurface: '#E7ECF3',
+  markerBorder: '#FFFFFF',
+  muted: '#F0F3F8',
+  outline: '#FFFFFF',
+  selected: '#EEF4FF',
+  selectedLine: '#DCE8FF',
+  strongMuted: '#EAEDF4',
+  toast: 'rgba(23, 23, 28, 0.9)',
+  toastLine: 'rgba(255, 255, 255, 0.18)',
+  toastText: '#FFFFFF',
 };
+
+const darkPalette: typeof lightPalette = {
+  background: '#101318',
+  card: '#1A1F27',
+  text: '#F5F7FA',
+  secondary: '#AAB2C0',
+  blue: '#60A5FA',
+  green: '#4ADE80',
+  yellow: '#FBBF24',
+  red: '#FB7185',
+  gray: '#A0A8B7',
+  line: '#303845',
+  accent: '#38BDF8',
+  softBlue: '#152C4D',
+  softGreen: '#123925',
+  softYellow: '#493716',
+  softRed: '#4B1F2B',
+  backdropBlue: '#13233C',
+  backdropGreen: '#132B22',
+  bluePressed: '#3B82F6',
+  disabled: '#414A58',
+  field: '#151A21',
+  greenLine: '#245B3B',
+  handle: '#5A6575',
+  inputPlaceholder: '#8994A5',
+  mapHint: 'rgba(26, 31, 39, 0.96)',
+  mapHintLine: 'rgba(74, 85, 104, 0.9)',
+  mapSurface: '#1B232E',
+  markerBorder: '#1A1F27',
+  muted: '#252D39',
+  outline: '#F5F7FA',
+  selected: '#182A43',
+  selectedLine: '#335279',
+  strongMuted: '#232A35',
+  toast: 'rgba(245, 247, 250, 0.96)',
+  toastLine: 'rgba(16, 19, 24, 0.16)',
+  toastText: '#17171C',
+};
+
+let palette: typeof lightPalette = lightPalette;
 
 const initialRegion: Region = {
   latitude: -23.5505,
@@ -489,6 +550,10 @@ export default function App() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('Todos');
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('Todas');
   const [adminMetrics, setAdminMetrics] = useState<Open311AdminMetrics | null>(null);
+  const [theme, setTheme] = useState<ThemeMode>('light');
+
+  palette = theme === 'dark' ? darkPalette : lightPalette;
+  styles = createStyles();
 
   const selectedReport = useMemo(
     () => reports.find((report) => report.id === selectedReportId) ?? null,
@@ -1128,7 +1193,7 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <MinimalBackdrop />
-        <StatusBar style="dark" />
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
@@ -1140,8 +1205,10 @@ export default function App() {
             authForm={authForm}
             authMode={authMode}
             isAuthenticating={isAuthenticating}
+            theme={theme}
             onChangeAuthField={updateAuthForm}
             onChangeMode={setAuthMode}
+            onChangeTheme={setTheme}
             onSubmit={submitAuth}
           />
         </KeyboardAvoidingView>
@@ -1152,7 +1219,7 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <MinimalBackdrop />
-      <StatusBar style="dark" />
+      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
@@ -1160,13 +1227,9 @@ export default function App() {
       >
       <View style={[styles.appShell, isCompact && styles.appShellCompact]}>
         <View style={[styles.header, isCompact && styles.headerCompact]}>
-          <View>
-            <Text style={[styles.brand, isCompact && styles.brandCompact]}>Olho na Via</Text>
-            <Text style={[styles.subtitle, isCompact && styles.subtitleCompact]}>
-              Mapa colaborativo de manutenção viária
-            </Text>
-          </View>
+          <AppLogo compact={isCompact} header />
           <View style={[styles.headerRight, isCompact && styles.headerRightCompact]}>
+            <ThemeSelector theme={theme} onChangeTheme={setTheme} />
             <View style={styles.headerMetric}>
               <Text style={styles.headerMetricValue}>{stats.openReports}</Text>
               <Text style={styles.headerMetricLabel}>ativas</Text>
@@ -1648,15 +1711,19 @@ function MinimalBackdrop() {
   );
 }
 
-function AppLogo({ compact = false }: { compact?: boolean }) {
+function AppLogo({ compact = false, header = false }: { compact?: boolean; header?: boolean }) {
   return (
-    <View style={[styles.logoMark, compact && styles.logoMarkCompact]}>
-      <View style={styles.logoRoadLeft} />
-      <View style={styles.logoRoadRight} />
-      <View style={styles.logoPin}>
-        <View style={styles.logoPinCore} />
-      </View>
-    </View>
+    <Image
+      accessibilityLabel="Logo Olho na Via"
+      resizeMode="contain"
+      source={require('./assets/olho-na-via-logo.png')}
+      style={[
+        styles.logoImage,
+        compact && styles.logoImageCompact,
+        header && styles.logoImageHeader,
+        compact && header && styles.logoImageHeaderCompact,
+      ]}
+    />
   );
 }
 
@@ -1666,8 +1733,10 @@ function AuthScreen({
   authForm,
   authMode,
   isAuthenticating,
+  theme,
   onChangeAuthField,
   onChangeMode,
+  onChangeTheme,
   onSubmit,
 }: {
   apiMessage: string;
@@ -1675,8 +1744,10 @@ function AuthScreen({
   authForm: typeof emptyAuthForm;
   authMode: AuthMode;
   isAuthenticating: boolean;
+  theme: ThemeMode;
   onChangeAuthField: (field: keyof typeof emptyAuthForm, value: string) => void;
   onChangeMode: (mode: AuthMode) => void;
+  onChangeTheme: (theme: ThemeMode) => void;
   onSubmit: () => void;
 }) {
   const { height } = useWindowDimensions();
@@ -1702,6 +1773,8 @@ function AuthScreen({
           <View style={[styles.apiStatusDot, !apiSynced && styles.apiStatusDotWarning]} />
           <Text style={styles.apiStatusText}>{apiMessage}</Text>
         </View>
+
+        <ThemeSelector theme={theme} onChangeTheme={onChangeTheme} />
 
         <View style={styles.segmented}>
           <Pressable
@@ -1767,6 +1840,45 @@ function AuthScreen({
         </Pressable>
       </View>
     </ScrollView>
+  );
+}
+
+function ThemeSelector({
+  theme,
+  onChangeTheme,
+}: {
+  theme: ThemeMode;
+  onChangeTheme: (theme: ThemeMode) => void;
+}) {
+  return (
+    <View accessibilityRole="radiogroup" style={styles.themeSelector}>
+      <Pressable
+        accessibilityLabel="Usar tema claro"
+        accessibilityRole="radio"
+        accessibilityState={{ selected: theme === 'light' }}
+        onPress={() => onChangeTheme('light')}
+        style={({ pressed }) => [
+          styles.themeChoice,
+          theme === 'light' && styles.themeChoiceActive,
+          pressed && styles.buttonPressed,
+        ]}
+      >
+        <Text style={styles.themeChoiceIcon}>☼</Text>
+      </Pressable>
+      <Pressable
+        accessibilityLabel="Usar tema escuro"
+        accessibilityRole="radio"
+        accessibilityState={{ selected: theme === 'dark' }}
+        onPress={() => onChangeTheme('dark')}
+        style={({ pressed }) => [
+          styles.themeChoice,
+          theme === 'dark' && styles.themeChoiceActive,
+          pressed && styles.buttonPressed,
+        ]}
+      >
+        <Text style={styles.themeChoiceIcon}>☾</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -1948,7 +2060,7 @@ function Input({
         value={value}
         onChangeText={onChangeText}
         multiline={multiline}
-        placeholderTextColor="#8D819E"
+        placeholderTextColor={palette.inputPlaceholder}
         style={[styles.input, multiline && styles.textArea]}
         {...textInputProps}
       />
@@ -2144,9 +2256,9 @@ function getStatusMeta(status: ReportStatus) {
     case 'Concluído':
       return { color: palette.green, background: palette.softGreen };
     case 'Cancelado':
-      return { color: palette.gray, background: '#F0F2F6' };
+      return { color: palette.gray, background: palette.muted };
     default:
-      return { color: palette.gray, background: '#F0F2F6' };
+      return { color: palette.gray, background: palette.muted };
   }
 }
 
@@ -2158,7 +2270,8 @@ const cardShadow = {
   shadowRadius: 18,
 };
 
-const styles = StyleSheet.create({
+function createStyles() {
+  return StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: palette.background,
@@ -2179,13 +2292,13 @@ const styles = StyleSheet.create({
     width: '120%',
   },
   softBandTop: {
-    backgroundColor: '#EEF5FF',
+    backgroundColor: palette.backdropBlue,
     left: -60,
     top: -110,
     transform: [{ rotate: '-8deg' }],
   },
   softBandBottom: {
-    backgroundColor: '#F2F7EF',
+    backgroundColor: palette.backdropGreen,
     bottom: -115,
     right: -70,
     transform: [{ rotate: '7deg' }],
@@ -2219,59 +2332,24 @@ const styles = StyleSheet.create({
   authHeroCompact: {
     marginBottom: 14,
   },
-  logoMark: {
-    alignItems: 'center',
-    backgroundColor: palette.card,
-    borderColor: palette.line,
-    borderWidth: 1,
-    borderRadius: 8,
-    height: 64,
-    justifyContent: 'center',
+  logoImage: {
+    height: 96,
     marginBottom: 18,
-    width: 64,
-    ...cardShadow,
+    width: 96,
   },
-  logoMarkCompact: {
-    height: 52,
+  logoImageCompact: {
+    height: 72,
     marginBottom: 12,
-    width: 52,
+    width: 72,
   },
-  logoRoadLeft: {
-    backgroundColor: '#D6DEEA',
-    borderRadius: 8,
-    height: 34,
-    left: 20,
-    position: 'absolute',
-    transform: [{ rotate: '18deg' }],
-    width: 7,
+  logoImageHeader: {
+    height: 48,
+    marginBottom: 0,
+    width: 48,
   },
-  logoRoadRight: {
-    backgroundColor: palette.blue,
-    borderRadius: 8,
-    height: 34,
-    position: 'absolute',
-    right: 20,
-    transform: [{ rotate: '18deg' }],
-    width: 7,
-  },
-  logoPin: {
-    alignItems: 'center',
-    backgroundColor: palette.red,
-    borderColor: '#FFFFFF',
-    borderRadius: 8,
-    borderWidth: 3,
-    height: 22,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: 13,
-    top: 12,
-    width: 22,
-  },
-  logoPinCore: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    height: 6,
-    width: 6,
+  logoImageHeaderCompact: {
+    height: 42,
+    width: 42,
   },
   authTitle: {
     color: palette.text,
@@ -2322,22 +2400,6 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 12,
   },
-  brand: {
-    color: palette.text,
-    fontSize: 30,
-    fontWeight: '800',
-  },
-  brandCompact: {
-    fontSize: 25,
-  },
-  subtitle: {
-    color: palette.secondary,
-    fontSize: 14,
-    marginTop: 4,
-  },
-  subtitleCompact: {
-    fontSize: 12,
-  },
   headerRight: {
     alignItems: 'flex-end',
     gap: 8,
@@ -2370,8 +2432,8 @@ const styles = StyleSheet.create({
   },
   userChip: {
     alignItems: 'center',
-    backgroundColor: '#EEF4FF',
-    borderColor: '#DCE8FF',
+    backgroundColor: palette.selected,
+    borderColor: palette.selectedLine,
     borderWidth: 1,
     borderRadius: 8,
     flexDirection: 'row',
@@ -2392,8 +2454,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   tabBar: {
-    backgroundColor: '#EAEDF4',
-    borderColor: '#E0E4ED',
+    backgroundColor: palette.strongMuted,
+    borderColor: palette.line,
     borderWidth: 1,
     borderRadius: 8,
     flexDirection: 'row',
@@ -2413,7 +2475,7 @@ const styles = StyleSheet.create({
     borderColor: palette.line,
     borderWidth: 1,
     ...cardShadow,
-    shadowColor: '#1F2937',
+    shadowColor: '#000000',
     shadowOpacity: 0.08,
   },
   tabButtonText: {
@@ -2433,7 +2495,7 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   mapFrame: {
-    backgroundColor: '#E7ECF3',
+    backgroundColor: palette.mapSurface,
     borderColor: palette.line,
     borderWidth: 1,
     borderRadius: 8,
@@ -2456,8 +2518,8 @@ const styles = StyleSheet.create({
   },
   mapHint: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
-    borderColor: 'rgba(228, 231, 239, 0.9)',
+    backgroundColor: palette.mapHint,
+    borderColor: palette.mapHintLine,
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
@@ -2496,12 +2558,12 @@ const styles = StyleSheet.create({
   },
   liveDotMuted: {
     backgroundColor: palette.gray,
-    borderColor: '#EEF0F5',
+    borderColor: palette.muted,
   },
   markerShadow: {
     alignItems: 'center',
     backgroundColor: palette.card,
-    borderColor: '#FFFFFF',
+    borderColor: palette.markerBorder,
     borderWidth: 1,
     borderRadius: 8,
     height: 26,
@@ -2524,7 +2586,7 @@ const styles = StyleSheet.create({
   },
   userMarkerInner: {
     backgroundColor: palette.blue,
-    borderColor: '#FFFFFF',
+    borderColor: palette.outline,
     borderRadius: 8,
     borderWidth: 3,
     height: 16,
@@ -2589,7 +2651,7 @@ const styles = StyleSheet.create({
     lineHeight: 23,
   },
   protocolBadge: {
-    backgroundColor: '#F0F3F8',
+    backgroundColor: palette.muted,
     borderColor: palette.line,
     borderWidth: 1,
     borderRadius: 8,
@@ -2609,7 +2671,7 @@ const styles = StyleSheet.create({
   },
   apiStatusCard: {
     alignItems: 'center',
-    backgroundColor: '#F6F8FC',
+    backgroundColor: palette.field,
     borderColor: palette.line,
     borderWidth: 1,
     borderRadius: 8,
@@ -2635,7 +2697,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   filterPanel: {
-    backgroundColor: '#F6F8FC',
+    backgroundColor: palette.field,
     borderColor: palette.line,
     borderWidth: 1,
     borderRadius: 8,
@@ -2658,8 +2720,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   filterChipActive: {
-    backgroundColor: '#EEF4FF',
-    borderColor: '#C7D7FE',
+    backgroundColor: palette.selected,
+    borderColor: palette.selectedLine,
   },
   filterChipText: {
     color: palette.secondary,
@@ -2670,7 +2732,7 @@ const styles = StyleSheet.create({
     color: palette.blue,
   },
   insightCard: {
-    backgroundColor: '#F6F8FC',
+    backgroundColor: palette.field,
     borderColor: palette.line,
     borderWidth: 1,
     borderRadius: 8,
@@ -2689,7 +2751,7 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   locationCard: {
-    backgroundColor: '#F6F8FC',
+    backgroundColor: palette.field,
     borderColor: palette.line,
     borderWidth: 1,
     borderRadius: 8,
@@ -2708,8 +2770,8 @@ const styles = StyleSheet.create({
   },
   locationButton: {
     alignItems: 'center',
-    backgroundColor: '#EEF4FF',
-    borderColor: '#DCE8FF',
+    backgroundColor: palette.selected,
+    borderColor: palette.selectedLine,
     borderWidth: 1,
     borderRadius: 8,
     minHeight: 48,
@@ -2723,7 +2785,7 @@ const styles = StyleSheet.create({
   },
   emptyPhoto: {
     alignItems: 'center',
-    backgroundColor: '#F6F8FC',
+    backgroundColor: palette.field,
     borderColor: palette.line,
     borderRadius: 8,
     borderWidth: 1,
@@ -2755,7 +2817,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     alignItems: 'center',
     backgroundColor: palette.blue,
-    borderColor: '#1D4ED8',
+    borderColor: palette.bluePressed,
     borderWidth: 1,
     borderRadius: 8,
     minHeight: 52,
@@ -2766,7 +2828,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
   },
   disabledButton: {
-    backgroundColor: '#C8CEDA',
+    backgroundColor: palette.disabled,
     shadowOpacity: 0.08,
   },
   primaryButtonText: {
@@ -2776,7 +2838,7 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     alignItems: 'center',
-    backgroundColor: '#F6F8FC',
+    backgroundColor: palette.field,
     borderColor: palette.line,
     borderWidth: 1,
     borderRadius: 8,
@@ -2897,13 +2959,40 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   segmented: {
-    backgroundColor: '#EAEDF4',
-    borderColor: '#E0E4ED',
+    backgroundColor: palette.strongMuted,
+    borderColor: palette.line,
     borderWidth: 1,
     borderRadius: 8,
     flexDirection: 'row',
     gap: 5,
     padding: 5,
+  },
+  themeSelector: {
+    alignSelf: 'center',
+    backgroundColor: palette.strongMuted,
+    borderColor: palette.line,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 3,
+    padding: 3,
+  },
+  themeChoice: {
+    alignItems: 'center',
+    borderRadius: 6,
+    justifyContent: 'center',
+    height: 34,
+    width: 34,
+  },
+  themeChoiceActive: {
+    backgroundColor: palette.card,
+    borderColor: palette.line,
+    borderWidth: 1,
+  },
+  themeChoiceIcon: {
+    color: palette.secondary,
+    fontSize: 18,
+    fontWeight: '700',
   },
   segment: {
     alignItems: 'center',
@@ -2917,7 +3006,7 @@ const styles = StyleSheet.create({
     borderColor: palette.line,
     borderWidth: 1,
     ...cardShadow,
-    shadowColor: '#1F2937',
+    shadowColor: '#000000',
     shadowOpacity: 0.08,
   },
   segmentText: {
@@ -3009,7 +3098,7 @@ const styles = StyleSheet.create({
   },
   reportPhotoPlaceholder: {
     alignItems: 'center',
-    backgroundColor: '#F6F8FC',
+    backgroundColor: palette.field,
     borderRadius: 8,
     height: 108,
     justifyContent: 'center',
@@ -3036,7 +3125,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   footerText: {
-    backgroundColor: '#F6F8FC',
+    backgroundColor: palette.field,
     borderRadius: 8,
     color: palette.secondary,
     fontSize: 12,
@@ -3057,8 +3146,8 @@ const styles = StyleSheet.create({
   },
   statusButton: {
     alignItems: 'center',
-    backgroundColor: '#EEF4FF',
-    borderColor: '#DCE8FF',
+    backgroundColor: palette.selected,
+    borderColor: palette.selectedLine,
     borderWidth: 1,
     borderRadius: 8,
     minHeight: 42,
@@ -3073,7 +3162,7 @@ const styles = StyleSheet.create({
   confirmButton: {
     alignItems: 'center',
     backgroundColor: palette.softGreen,
-    borderColor: '#BBE8CA',
+    borderColor: palette.greenLine,
     borderWidth: 1,
     borderRadius: 8,
     minHeight: 42,
@@ -3131,8 +3220,8 @@ const styles = StyleSheet.create({
   },
   toast: {
     alignSelf: 'center',
-    backgroundColor: 'rgba(23, 23, 28, 0.9)',
-    borderColor: 'rgba(255, 255, 255, 0.18)',
+    backgroundColor: palette.toast,
+    borderColor: palette.toastLine,
     borderWidth: 1,
     borderRadius: 8,
     left: 20,
@@ -3144,7 +3233,7 @@ const styles = StyleSheet.create({
     ...cardShadow,
   },
   toastText: {
-    color: '#FFFFFF',
+    color: palette.toastText,
     fontSize: 14,
     fontWeight: '800',
     textAlign: 'center',
@@ -3170,7 +3259,7 @@ const styles = StyleSheet.create({
   },
   modalHandle: {
     alignSelf: 'center',
-    backgroundColor: '#CED4DF',
+    backgroundColor: palette.handle,
     borderRadius: 8,
     height: 5,
     marginBottom: 14,
@@ -3285,7 +3374,7 @@ const styles = StyleSheet.create({
   confirmWideButton: {
     alignItems: 'center',
     backgroundColor: palette.softGreen,
-    borderColor: '#BBE8CA',
+    borderColor: palette.greenLine,
     borderWidth: 1,
     borderRadius: 8,
     justifyContent: 'center',
@@ -3318,7 +3407,7 @@ const styles = StyleSheet.create({
   },
   statusOption: {
     alignItems: 'center',
-    backgroundColor: '#F6F8FC',
+    backgroundColor: palette.field,
     borderColor: palette.line,
     borderRadius: 8,
     borderWidth: 1,
@@ -3359,7 +3448,7 @@ const styles = StyleSheet.create({
     width: 18,
   },
   timelineDot: {
-    borderColor: '#FFFFFF',
+    borderColor: palette.outline,
     borderRadius: 8,
     borderWidth: 3,
     height: 16,
@@ -3428,7 +3517,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   distributionTrack: {
-    backgroundColor: '#EEF0F5',
+    backgroundColor: palette.muted,
     borderRadius: 8,
     height: 8,
     overflow: 'hidden',
@@ -3438,4 +3527,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     height: 8,
   },
-});
+  });
+}
+
+let styles = createStyles();
