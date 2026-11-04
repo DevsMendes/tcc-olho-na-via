@@ -1,6 +1,6 @@
 # Modelagem do Banco e Integracao Open311
 
-Este documento descreve a parte pratica do projeto Buraco Alerta: aplicativo mobile, API 311 local e banco SQLite.
+Este documento descreve a parte pratica do projeto Olho na Via: aplicativo mobile, API 311 local e banco SQLite.
 
 ## Fluxo principal
 

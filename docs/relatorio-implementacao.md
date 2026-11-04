@@ -1,8 +1,8 @@
-# Relatorio de Implementacao do Projeto Buraco Alerta
+# Relatorio de Implementacao do Projeto Olho na Via
 
 ## 1. Visao geral
 
-O projeto Buraco Alerta foi implementado como um aplicativo mobile em React Native com Expo, integrado a uma API local baseada no padrao Open311. A solucao permite que um cidadao registre ocorrencias de buracos em vias publicas, informe a localizacao, adicione uma foto, acompanhe o status da solicitacao e visualize o historico de alteracoes.
+O projeto Olho na Via foi implementado como um aplicativo mobile em React Native com Expo, integrado a uma API local baseada no padrao Open311. A solucao permite que um cidadao registre ocorrencias de buracos em vias publicas, informe a localizacao, adicione uma foto, acompanhe o status da solicitacao e visualize o historico de alteracoes.
 
 A parte pratica do sistema foi estruturada em tres camadas principais:
 

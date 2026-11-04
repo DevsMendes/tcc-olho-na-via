@@ -1161,7 +1161,7 @@ export default function App() {
       <View style={[styles.appShell, isCompact && styles.appShellCompact]}>
         <View style={[styles.header, isCompact && styles.headerCompact]}>
           <View>
-            <Text style={[styles.brand, isCompact && styles.brandCompact]}>Buraco Alerta</Text>
+            <Text style={[styles.brand, isCompact && styles.brandCompact]}>Olho na Via</Text>
             <Text style={[styles.subtitle, isCompact && styles.subtitleCompact]}>
               Mapa colaborativo de manutenção viária
             </Text>
@@ -1691,7 +1691,7 @@ function AuthScreen({
     >
       <View style={[styles.authHero, isCompact && styles.authHeroCompact]}>
         <AppLogo compact={isCompact} />
-        <Text style={[styles.authTitle, isCompact && styles.authTitleCompact]}>Buraco Alerta</Text>
+        <Text style={[styles.authTitle, isCompact && styles.authTitleCompact]}>Olho na Via</Text>
         <Text style={[styles.authSubtitle, isCompact && styles.authSubtitleCompact]}>
           Cadastro cidadão para registrar e acompanhar ocorrências urbanas.
         </Text>

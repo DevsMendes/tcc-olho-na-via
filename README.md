@@ -1,4 +1,4 @@
-# Buraco Alerta
+# Olho na Via
 
 Aplicativo mobile em React Native + Expo para registro colaborativo de buracos em vias publicas. O prototipo usa mapa, GPS em tempo real, foto da ocorrencia, cadastro/login, lista de protocolos, alteracao de status, historico e uma API local compatível com o fluxo do padrao Open311.
 
