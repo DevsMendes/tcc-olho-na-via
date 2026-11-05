@@ -1810,7 +1810,7 @@ function MinimalBackdrop() {
 function AppLogo({ compact = false, header = false }: { compact?: boolean; header?: boolean }) {
   return (
     <Image
-      accessibilityLabel="Logo OlhoVia"
+      accessibilityLabel="Logo Olho na Via"
       resizeMode="contain"
       source={require('./assets/olho-na-via-logo.png')}
       style={[
@@ -1858,7 +1858,7 @@ function AuthScreen({
     >
       <View style={[styles.authHero, isCompact && styles.authHeroCompact]}>
         <AppLogo compact={isCompact} />
-        <Text style={[styles.authTitle, isCompact && styles.authTitleCompact]}>OlhoVia</Text>
+        <Text style={[styles.authTitle, isCompact && styles.authTitleCompact]}>Olho na Via</Text>
         <Text style={[styles.authSubtitle, isCompact && styles.authSubtitleCompact]}>
           Cadastro cidadão para registrar e acompanhar ocorrências urbanas.
         </Text>

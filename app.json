@@ -4,20 +4,22 @@
     "slug": "olho-na-via",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/olho-na-via-logo.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "O OlhoVia usa a camera para fotografar buracos nas vias.",
-        "NSLocationWhenInUseUsageDescription": "O OlhoVia usa sua localizacao em tempo real para marcar o buraco no mapa.",
-        "NSPhotoLibraryUsageDescription": "O OlhoVia permite anexar fotos da galeria ao registro."
+        "NSCameraUsageDescription": "O Olho na Via usa a camera para fotografar buracos nas vias.",
+        "NSLocationWhenInUseUsageDescription": "O Olho na Via usa sua localizacao em tempo real para marcar o buraco no mapa.",
+        "NSPhotoLibraryUsageDescription": "O Olho na Via permite anexar fotos da galeria ao registro."
       }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/olho-na-via-logo.png"
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -28,14 +30,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "O OlhoVia permite anexar fotos da galeria ao registro.",
-          "cameraPermission": "O OlhoVia usa a camera para fotografar buracos nas vias."
+          "photosPermission": "O Olho na Via permite anexar fotos da galeria ao registro.",
+          "cameraPermission": "O Olho na Via usa a camera para fotografar buracos nas vias."
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "O OlhoVia usa sua localizacao em tempo real para marcar o buraco no mapa."
+          "locationWhenInUsePermission": "O Olho na Via usa sua localizacao em tempo real para marcar o buraco no mapa."
         }
       ],
       "expo-status-bar"
