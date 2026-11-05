@@ -33,6 +33,14 @@ Antes de baixar o projeto, instale:
 
 Site publicado: https://devsmendes.github.io/tcc-olho-na-via/
 
+**Versão desktop**
+
+![Página inicial do site Olho na Via em desktop](docs/images/site-desktop.png)
+
+**Versão mobile**
+
+![Página inicial do site Olho na Via em celular](docs/images/site-mobile.png)
+
 O site institucional do projeto pode ser aberto diretamente no navegador:
 
 ```bash
