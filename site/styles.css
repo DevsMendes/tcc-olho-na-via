@@ -22,3 +22,5 @@ button.theme-toggle{width:38px;height:38px;min-width:38px;padding:0;display:inli
 .topbar nav a,.topbar .nav-action{transition:color .2s ease}.topbar nav a:hover,.topbar nav a:focus-visible,.topbar nav a:active,.topbar .nav-action:hover,.topbar .nav-action:focus-visible,.topbar .nav-action:active{color:var(--blue)}
 
 .topbar{transition:opacity .25s ease,transform .25s ease}.topbar.menu-hidden{opacity:0;transform:translateY(-18px);pointer-events:none}
+
+body:not(.light) .via-panel{background:rgba(23,25,31,.88);border-color:rgba(255,255,255,.14);color:#f0eee8}body:not(.light) .via-panel p{color:#aaaab0}body:not(.light) .via-launcher span{background:rgba(23,25,31,.82);color:#f0eee8;border-color:rgba(255,255,255,.14);box-shadow:0 8px 22px rgba(0,0,0,.28)}
