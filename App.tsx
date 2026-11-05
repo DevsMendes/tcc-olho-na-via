@@ -1962,7 +1962,7 @@ function ThemeSelector({
           pressed && styles.buttonPressed,
         ]}
       >
-        <Text style={styles.themeChoiceIcon}>☼</Text>
+        <Text style={styles.themeChoiceIcon}>◑</Text>
       </Pressable>
       <Pressable
         accessibilityLabel="Usar tema escuro"
@@ -1976,7 +1976,7 @@ function ThemeSelector({
           pressed && styles.buttonPressed,
         ]}
       >
-        <Text style={styles.themeChoiceIcon}>☾</Text>
+        <Text style={styles.themeChoiceIcon}>◐</Text>
       </Pressable>
     </View>
   );
