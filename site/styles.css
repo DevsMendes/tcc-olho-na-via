@@ -20,3 +20,5 @@ button.theme-toggle{width:38px;height:38px;min-width:38px;padding:0;display:inli
 .topbar .theme-toggle{position:absolute;right:0}.topbar nav{margin:0}body:not(.light) .promise{background:#17191f;color:#f0eee8}body:not(.light) .promise>p{color:#aaaab0}@media(max-width:800px){.topbar .theme-toggle{right:0}}
 
 .topbar nav a,.topbar .nav-action{transition:color .2s ease}.topbar nav a:hover,.topbar nav a:focus-visible,.topbar nav a:active,.topbar .nav-action:hover,.topbar .nav-action:focus-visible,.topbar .nav-action:active{color:var(--blue)}
+
+.topbar{transition:opacity .25s ease,transform .25s ease}.topbar.menu-hidden{opacity:0;transform:translateY(-18px);pointer-events:none}
