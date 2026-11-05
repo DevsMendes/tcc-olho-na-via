@@ -1949,34 +1949,19 @@ function ThemeSelector({
   onChangeTheme: (theme: ThemeMode) => void;
 }) {
   return (
-    <View accessibilityRole="radiogroup" style={[styles.themeSelector, compact && styles.themeSelectorCompact]}>
+    <View style={[styles.themeSelector, compact && styles.themeSelectorCompact]}>
       <Pressable
-        accessibilityLabel="Usar tema claro"
-        accessibilityRole="radio"
-        accessibilityState={{ selected: theme === 'light' }}
-        onPress={() => onChangeTheme('light')}
+        accessibilityLabel={theme === 'light' ? 'Ativar tema escuro' : 'Ativar tema claro'}
+        accessibilityRole="button"
+        onPress={() => onChangeTheme(theme === 'light' ? 'dark' : 'light')}
         style={({ pressed }) => [
           styles.themeChoice,
           compact && styles.themeChoiceCompact,
-          theme === 'light' && styles.themeChoiceActive,
+          styles.themeChoiceActive,
           pressed && styles.buttonPressed,
         ]}
       >
-        <Text style={styles.themeChoiceIcon}>◑</Text>
-      </Pressable>
-      <Pressable
-        accessibilityLabel="Usar tema escuro"
-        accessibilityRole="radio"
-        accessibilityState={{ selected: theme === 'dark' }}
-        onPress={() => onChangeTheme('dark')}
-        style={({ pressed }) => [
-          styles.themeChoice,
-          compact && styles.themeChoiceCompact,
-          theme === 'dark' && styles.themeChoiceActive,
-          pressed && styles.buttonPressed,
-        ]}
-      >
-        <Text style={styles.themeChoiceIcon}>◐</Text>
+        <Text style={styles.themeChoiceIcon}>{theme === 'light' ? '◑' : '◐'}</Text>
       </Pressable>
     </View>
   );
