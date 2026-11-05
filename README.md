@@ -31,6 +31,8 @@ Antes de baixar o projeto, instale:
 
 ## Site de apresentacao
 
+Site publicado: https://devsmendes.github.io/tcc-olho-na-via/
+
 O site institucional do projeto pode ser aberto diretamente no navegador:
 
 ```bash
